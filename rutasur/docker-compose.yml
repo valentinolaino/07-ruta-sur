@@ -14,7 +14,7 @@ services:
     image: apache/kafka:3.8.0
     container_name: rutasur-kafka
     ports:
-      - "9092:9092"   # para los servicios Node.js que corren en tu máquina
+      - "9092:9092" # para los servicios Node.js que corren en tu máquina
     environment:
       # Un único nodo que cumple los dos roles: broker y controlador (KRaft)
       KAFKA_NODE_ID: 1
@@ -39,7 +39,11 @@ services:
     volumes:
       - kafka_data:/var/lib/kafka/data
     healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1",
+        ]
       interval: 5s
       timeout: 10s
       retries: 20
@@ -76,7 +80,7 @@ services:
     image: postgres:16
     container_name: rutasur-postgres
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       POSTGRES_USER: rutasur
       POSTGRES_PASSWORD: rutasur
