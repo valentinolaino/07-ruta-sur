@@ -1,0 +1,96 @@
+# RutaSur - entorno local
+# Se levanta TODO con un solo comando:  docker compose up -d
+#
+# Servicios de infraestructura:
+#   kafka       -> el log de eventos (un solo broker, modo KRaft: sin ZooKeeper)
+#   kafka-init  -> corre una vez, crea los 6 topics del catálogo y termina
+#   postgres    -> vistas de lectura (reemplaza a MongoDB)
+#
+# Los servicios Node.js (simulador, proyector, etc.) y Next.js se agregan
+# en pasos siguientes; por ahora corren fuera de Docker con `node`.
+
+services:
+  kafka:
+    image: apache/kafka:3.8.0
+    container_name: rutasur-kafka
+    ports:
+      - "9092:9092"   # para los servicios Node.js que corren en tu máquina
+    environment:
+      # Un único nodo que cumple los dos roles: broker y controlador (KRaft)
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+      # Tres "puertas de entrada":
+      #   PLAINTEXT  (9092)  -> desde tu máquina:        localhost:9092
+      #   INTERNAL   (29092) -> desde otros contenedores: kafka:29092
+      #   CONTROLLER (9093)  -> uso interno de Kafka
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,INTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+
+      # Con un solo broker, todo se replica 1 vez
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  kafka-init:
+    image: apache/kafka:3.8.0
+    container_name: rutasur-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/bash", "-c"]
+    # En docker compose, "$$" significa un "$" literal (si no, compose
+    # intentaría reemplazar la variable por su cuenta).
+    command:
+      - |
+        set -e
+        BS=kafka:29092
+        T=/opt/kafka/bin/kafka-topics.sh
+
+        # Retención: 30 días = 2592000000 ms | 7 días = 604800000 ms
+        # La clave de partición (shipmentId) la pone el productor, no el topic.
+        $$T --bootstrap-server $$BS --create --if-not-exists --topic envios.estados           --partitions 3 --replication-factor 1 --config retention.ms=2592000000
+        $$T --bootstrap-server $$BS --create --if-not-exists --topic envios.promesas          --partitions 3 --replication-factor 1 --config cleanup.policy=compact
+        $$T --bootstrap-server $$BS --create --if-not-exists --topic envios.reprogramaciones  --partitions 3 --replication-factor 1 --config retention.ms=2592000000
+        $$T --bootstrap-server $$BS --create --if-not-exists --topic alertas.sla              --partitions 3 --replication-factor 1 --config retention.ms=604800000
+        $$T --bootstrap-server $$BS --create --if-not-exists --topic notificaciones.enviadas  --partitions 3 --replication-factor 1 --config retention.ms=604800000
+        $$T --bootstrap-server $$BS --create --if-not-exists --topic envios.estados.dlq       --partitions 3 --replication-factor 1 --config retention.ms=2592000000
+
+        echo "Topics disponibles:"
+        $$T --bootstrap-server $$BS --list
+
+  postgres:
+    image: postgres:16
+    container_name: rutasur-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: rutasur
+      POSTGRES_PASSWORD: rutasur
+      POSTGRES_DB: rutasur
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Todo .sql en esta carpeta se ejecuta SOLO la primera vez que se crea el volumen
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rutasur -d rutasur"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  kafka_data:
+  postgres_data:
