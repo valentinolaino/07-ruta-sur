@@ -41,6 +41,28 @@ const MOTIVOS_FALLO = ['AUSENTE', 'DIRECCION_INCORRECTA', 'RECHAZADO', 'ZONA_INA
 // Versión actual del esquema de los eventos (campo "version").
 const VERSION_ESQUEMA = 1;
 
+// --- Eventos que publican los servicios (no el simulador) ---
+
+// envios.reprogramaciones: la decisión del servicio de reprogramación tras un fallo.
+//   REPROGRAMADO -> hay nuevo intento (campo proximoIntento)
+//   RETENIDO     -> dirección incorrecta: espera una corrección, no se reprograma sola
+//   DEVOLUCION   -> rechazo, o tercer fallo: vuelve al comercio
+const TIPOS_REPROGRAMACION = ['REPROGRAMADO', 'RETENIDO', 'DEVOLUCION'];
+
+// alertas.sla: el "tipo" de una alerta ABIERTA es el nombre de la regla que la disparó;
+// cuando el envío se entrega, el monitor emite ALERTA_CERRADA.
+const REGLAS_SLA = ['SIN_INGRESO', 'SIN_SALIDA', 'FALLO_DIA_LIMITE', 'VENCIDO'];
+const TIPO_ALERTA_CERRADA = 'ALERTA_CERRADA';
+const PRIORIDAD_POR_REGLA = {
+  SIN_INGRESO: 'MEDIA',
+  SIN_SALIDA: 'ALTA',
+  FALLO_DIA_LIMITE: 'ALTA',
+  VENCIDO: 'CRITICA',
+};
+
+// notificaciones.enviadas
+const TIPOS_NOTIFICACION = ['NOTIFICACION_FALLO', 'NOTIFICACION_ALERTA'];
+
 // ---------------------------------------------------------------------------
 // 2. Esquemas JSON
 // JSON Schema es un estándar para describir cómo debe ser un JSON.
@@ -94,10 +116,38 @@ const ajv = new Ajv({ allErrors: true, allowUnionTypes: true });
 const validarBase = ajv.compile(esquemaBase);
 const validarEstado = ajv.compile(esquemaEstado);
 
+// Los topics de los servicios suman a los campos comunes una restricción sobre "tipo"
+// y los campos propios que el proyector necesita. Se mantienen livianos a propósito.
+const esquemaPromesa = {
+  ...esquemaBase,
+  required: [...camposObligatorios, 'venceEn'],
+  properties: { ...propiedadesComunes, tipo: { const: 'PROMESA' }, venceEn: { type: 'string', minLength: 1 } },
+};
+const esquemaReprogramacion = {
+  ...esquemaBase,
+  required: [...camposObligatorios, 'intento'],
+  properties: {
+    ...propiedadesComunes,
+    tipo: { enum: TIPOS_REPROGRAMACION },
+    intento: { type: 'integer', minimum: 1 },
+  },
+};
+const esquemaAlerta = {
+  ...esquemaBase,
+  properties: { ...propiedadesComunes, tipo: { enum: [...REGLAS_SLA, TIPO_ALERTA_CERRADA] } },
+};
+const esquemaNotificacion = {
+  ...esquemaBase,
+  properties: { ...propiedadesComunes, tipo: { enum: TIPOS_NOTIFICACION } },
+};
+
 // Cada topic puede tener su validador; si no tiene, se usa el base.
-// Los demás topics se irán sumando en los pasos siguientes.
 const validadoresPorTopic = {
   [TOPICS.ESTADOS]: validarEstado,
+  [TOPICS.PROMESAS]: ajv.compile(esquemaPromesa),
+  [TOPICS.REPROGRAMACIONES]: ajv.compile(esquemaReprogramacion),
+  [TOPICS.ALERTAS_SLA]: ajv.compile(esquemaAlerta),
+  [TOPICS.NOTIFICACIONES]: ajv.compile(esquemaNotificacion),
 };
 
 // ---------------------------------------------------------------------------
@@ -155,12 +205,31 @@ function crearEvento({
   };
 }
 
+// ID DERIVADO: un eventId que se calcula a partir del evento que lo causó, en vez de
+// ser aleatorio. Si un servicio se cae después de publicar y antes de confirmar el offset,
+// al reiniciar reprocesa el mismo evento y publica OTRA VEZ la reacción, pero con el
+// MISMO eventId. El consumidor que la recibe la detecta como duplicado y la descarta.
+// Así, "al menos una vez" en el transporte se convierte en "una vez" en el resultado.
+//
+//   idDerivado('notificacion', evento.eventId)  -> siempre el mismo UUID para ese evento
+function idDerivado(prefijo, eventIdOrigen) {
+  const h = crypto.createHash('sha256').update(`${prefijo}:${eventIdOrigen}`).digest('hex');
+  // formato UUID v4 (versión y variante fijadas)
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+
 module.exports = {
   TOPICS,
   GRUPOS,
   TIPOS_ESTADO,
   MOTIVOS_FALLO,
   VERSION_ESQUEMA,
+  TIPOS_REPROGRAMACION,
+  REGLAS_SLA,
+  TIPO_ALERTA_CERRADA,
+  PRIORIDAD_POR_REGLA,
+  TIPOS_NOTIFICACION,
   validarEvento,
   crearEvento,
+  idDerivado,
 };
