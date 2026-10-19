@@ -15,6 +15,8 @@ const TABLAS_ESPERADAS = [
   'notificaciones',
   'metricas_diarias',
   'eventos_procesados',
+  'monitor_sla',
+  'metricas_tiempos',
 ];
 
 let hayErrores = false;

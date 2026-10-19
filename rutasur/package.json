@@ -13,7 +13,12 @@
     "proyector": "node servicios/proyector/index.js",
     "notificaciones": "node servicios/notificaciones/index.js",
     "reprogramacion": "node servicios/reprogramacion/index.js",
-    "test": "node --test shared/eventos.test.js simulador/plan.test.js servicios/proyector/reducer.test.js servicios/servicios.test.js"
+    "monitor": "node servicios/monitor-sla/index.js",
+    "analitica": "node servicios/analitica/index.js",
+    "analitica:tiempos": "node servicios/analitica/tiempos.js",
+    "todo": "node scripts/todos.js",
+    "reconstruir": "node scripts/reconstruir.js",
+    "test": "node --test shared/eventos.test.js simulador/plan.test.js servicios/proyector/reducer.test.js servicios/servicios.test.js servicios/monitor-sla/evaluar.test.js servicios/analitica/indicadores.test.js"
   },
   "dependencies": {
     "ajv": "^8.17.1",

@@ -111,6 +111,47 @@ CREATE TABLE eventos_procesados (
 CREATE INDEX idx_eventos_procesados_fecha ON eventos_procesados (procesado_en);
 
 -- ---------------------------------------------------------------------------
+-- monitor_sla  (la escribe el MONITOR DE SLA)
+-- Estado interno del monitor (CU3): "una tabla por envío con último estado y
+-- vencimiento", construida desde envios.estados y envios.promesas.
+--
+-- Está en PostgreSQL para poder REANUDAR tras un reinicio: las reglas que ya
+-- alertaron (reglas_alertadas) sobreviven al proceso, así "una misma regla no
+-- vuelve a alertar" y "tras reiniciar el monitor no se pierden ni se repiten
+-- alertas". En el PDF esto era "estado en memoria con respaldo en MongoDB".
+-- ---------------------------------------------------------------------------
+CREATE TABLE monitor_sla (
+    shipment_id        TEXT PRIMARY KEY,
+    estado             TEXT NOT NULL,             -- último estado de envios.estados aplicado
+    hub_id             TEXT,
+    zona_id            TEXT,
+    vence_en           TIMESTAMPTZ,               -- vencimiento de la promesa (envios.promesas)
+    ultima_secuencia   INTEGER NOT NULL DEFAULT 0, -- regla de orden, igual que el proyector
+    reglas_alertadas   JSONB   NOT NULL DEFAULT '[]', -- ["SIN_INGRESO", ...]: reglas que ya dispararon
+    terminado          BOOLEAN NOT NULL DEFAULT false, -- llegó ENTREGADO: no se evalúa más
+    ultimo_ocurrido_en TIMESTAMPTZ NOT NULL,      -- mayor ocurridoEn visto = reloj simulado al arrancar
+    actualizado_en     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- El tick evalúa todos los envíos abiertos.
+CREATE INDEX idx_monitor_sla_abiertos ON monitor_sla (terminado);
+
+-- ---------------------------------------------------------------------------
+-- metricas_tiempos  (la escribe el grupo NUEVO de ANALÍTICA: analitica-tiempos)
+-- CUARTO INDICADOR (reprocesamiento): tiempo medio entre INGRESADO_HUB y
+-- EN_REPARTO por hub y día. Se lanza con `npm run analitica:tiempos` (o desde el
+-- panel de demo): el grupo es nuevo, así que lee envios.estados desde el inicio
+-- y completa el histórico sin reiniciar los demás servicios.
+-- ---------------------------------------------------------------------------
+CREATE TABLE metricas_tiempos (
+    fecha    DATE    NOT NULL,                 -- día (UTC) del EN_REPARTO
+    hub_id   TEXT    NOT NULL,
+    muestras INTEGER NOT NULL DEFAULT 0,       -- cuántos envíos salieron
+    suma_ms  BIGINT  NOT NULL DEFAULT 0,       -- suma de demoras: media = suma_ms / muestras
+    PRIMARY KEY (fecha, hub_id)
+);
+
+-- ---------------------------------------------------------------------------
 -- Tiempo real para la interfaz: LISTEN / NOTIFY
 -- Reemplaza a los "change streams" de MongoDB. Cada cambio en envios o alertas
 -- avisa por un canal; el route handler de Next.js escucha ese canal y reenvía

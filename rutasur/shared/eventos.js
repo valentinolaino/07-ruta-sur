@@ -25,6 +25,10 @@ const GRUPOS = {
   REPROGRAMACION: 'reprogramacion',
   MONITOR_SLA: 'monitor-sla',
   ANALITICA: 'analitica',
+  // Grupo NUEVO, creado recién cuando se activa el cuarto indicador (reprocesamiento):
+  // al no tener offsets guardados, lee envios.estados desde el inicio y completa el
+  // histórico sin tocar a los demás servicios.
+  ANALITICA_TIEMPOS: 'analitica-tiempos',
 };
 
 const TIPOS_ESTADO = [

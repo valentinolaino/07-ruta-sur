@@ -80,7 +80,7 @@ services:
     image: postgres:16
     container_name: rutasur-postgres
     ports:
-      - "5433:5432"
+      - "5434:5432"
     environment:
       POSTGRES_USER: rutasur
       POSTGRES_PASSWORD: rutasur

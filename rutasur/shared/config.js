@@ -11,5 +11,5 @@ module.exports = {
 
   // Cadena de conexión a PostgreSQL: usuario, contraseña, host, puerto y base.
   databaseUrl:
-    process.env.DATABASE_URL || 'postgres://rutasur:rutasur@localhost:5432/rutasur',
+    process.env.DATABASE_URL || 'postgres://rutasur:rutasur@localhost:5434/rutasur',
 };

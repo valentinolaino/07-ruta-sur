@@ -66,19 +66,28 @@ async function publicarCrudo(producer, topic, clave, texto) {
 // Parámetros:
 //   servicio    nombre para los logs (ej: 'proyector')
 //   groupId     grupo de consumidores (ver GRUPOS en eventos.js)
-//   topics      lista de topics a leer
+//   topics      lista de topics a leer. Cada entrada puede ser:
+//                 'nombre.topic'            -> usa la opción "desdeInicio" de abajo
+//                 { nombre, desdeInicio }   -> opcional por topic (ver más abajo)
 //   manejar     async (evento, { topic, particion, offset }) => { ... }
 //   desdeInicio true = si el grupo es nuevo, empieza desde el primer evento del topic
 //               (así se hace el reprocesamiento del CU4). Si el grupo ya tiene offsets
 //               guardados, esta opción se ignora y retoma desde donde quedó.
+//
+// Por-topic: útil cuando un topic es compactado y conviene releerlo entero aunque
+// el resto no. Ej: el monitor de SLA suscribe envios.promesas desde el inicio
+// (así recupera la promesa de envíos abiertos de antes de su arranque) pero
+// envios.estados no (no quiere reabrir alertas de envíos viejos ya resueltos).
 async function consumir({ servicio, groupId, topics, manejar, desdeInicio = false }) {
   const kafka = crearKafka(servicio);
   const consumer = kafka.consumer({ groupId });
   const productorDlq = await crearProductor(`${servicio}-dlq`);
 
   await consumer.connect();
-  for (const topic of topics) {
-    await consumer.subscribe({ topic, fromBeginning: desdeInicio });
+  for (const item of topics) {
+    const nombre = typeof item === 'string' ? item : item.nombre;
+    const desde = typeof item === 'string' ? desdeInicio : item.desdeInicio;
+    await consumer.subscribe({ topic: nombre, fromBeginning: desde });
   }
 
   await consumer.run({
