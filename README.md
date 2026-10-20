@@ -1,4 +1,4 @@
-# 07-ruta-sur — RutaSur (TP7)
+# RutaSur
 
 **Caso práctico:** Sistema de logística orientada a eventos con Kafka + 5 consumidores independientes + 5 pantallas Next.js. El objetivo es visualizar la cadena de eventos, detectar riesgos de SLA, registrar notificaciones/alertas y mostrar analítica en tiempo real.
 
@@ -20,7 +20,7 @@
 
 ## Decisiones de diseño
 
-- **PostgreSQL** en lugar de MongoDB (cambio sobre lo indicado en el PDF).
+- **PostgreSQL** 
   - Se usa `LISTEN/NOTIFY` para tiempo real en lugar de change streams.
   - Las vistas derivadas (`envios`, `alertas`, `notificaciones`, `metricas_*`, `monitor_sla`, `eventos_procesados`) son **reconstruibles** desde los eventos de Kafka.
   - `db/init.sql` documenta el reemplazo; `db/migracion.sql` para volúmenes ya existentes.
