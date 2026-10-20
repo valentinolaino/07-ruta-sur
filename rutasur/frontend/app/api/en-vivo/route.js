@@ -1,6 +1,4 @@
 // SSE en vivo: escucha envios_cambios y alertas_cambios en PostgreSQL
-// (el reemplazo de los "change streams" de Mongo) y reenvía un aviso al navegador.
-// Es read-only: no modifica la base.
 
 import { NextResponse } from "next/server";
 import { pool } from "@/lib/db";

@@ -1,13 +1,4 @@
 // Utilidades de tiempo para el frontend.
-//
-// Regla del TP: el "reloj del sistema" del proyecto es el reloj simulado del
-// simulador (la hora de los eventos), no el reloj de la máquina. Las pantallas
-// usan esta misma regla para los cronómetros y para la barra de latencia
-// evento→pantalla.
-
-// Hora simulada "actual": la del evento más reciente visto en la base, con un
-// avance proporcional al tiempo real transcurrido desde que lo vimos, de modo
-// que el cronómetro avance suave mientras no llegan eventos nuevos.
 let baseVista = null;
 let baseReloj = 0;
 
@@ -22,7 +13,7 @@ export function relojSimulado() {
 }
 
 // "hace 2 min 05 s" para un instante pasado (acepta Date, ISO o epoch ms).
-export function hace( instante) {
+export function hace(instante) {
   if (instante == null) return "—";
   const t = new Date(instante).getTime();
   const seg = Math.max(0, Math.floor((relojSimulado() - t) / 1000));
@@ -36,7 +27,10 @@ export function hace( instante) {
 // mm:ss acumulado entre dos instantes (duración de un tramo).
 export function duracion(desde, hasta) {
   if (desde == null || hasta == null) return "—";
-  const seg = Math.max(0, Math.floor((new Date(hasta) - new Date(desde)) / 1000));
+  const seg = Math.max(
+    0,
+    Math.floor((new Date(hasta) - new Date(desde)) / 1000),
+  );
   return `${String(Math.floor(seg / 60)).padStart(2, "0")}:${String(seg % 60).padStart(2, "0")}`;
 }
 

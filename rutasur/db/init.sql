@@ -1,27 +1,18 @@
 -- RutaSur - esquema de lectura en PostgreSQL
---
--- Igual que en el PDF: estas tablas son VISTAS DERIVADAS de los eventos de Kafka,
--- no la fuente de verdad. Cualquiera se puede borrar y reconstruir leyendo el topic
--- desde el inicio.
 
--- ---------------------------------------------------------------------------
--- envios  (la escribe el PROYECTOR)
--- Un registro por envío: estado actual, promesa, intentos, historial embebido
--- y última secuencia aplicada.
--- ---------------------------------------------------------------------------
 CREATE TABLE envios (
-    shipment_id       TEXT PRIMARY KEY,                 -- "shipmentId único"
-    estado            TEXT        NOT NULL,             -- CREADO, INGRESADO_HUB, ..., ENTREGADO, ENTREGA_FALLIDA,
-                                                        -- y los derivados REPROGRAMADO, RETENIDO, DEVOLUCION
+    shipment_id       TEXT PRIMARY KEY,                 
+    estado            TEXT        NOT NULL,            
+                                                       
     hub_id            TEXT,
     zona_id           TEXT,
     repartidor_id     TEXT,
-    promesa_vence_en  TIMESTAMPTZ,                      -- "promesa.venceEn"
+    promesa_vence_en  TIMESTAMPTZ,                      
     intentos          INTEGER     NOT NULL DEFAULT 0,
-    motivo_fallo      TEXT,                             -- AUSENTE, DIRECCION_INCORRECTA, RECHAZADO, ZONA_INACCESIBLE
-    reprogramacion    JSONB,                            -- próximo intento (día y franja) si corresponde
-    historial         JSONB       NOT NULL DEFAULT '[]', -- embebido: es corto (< 15 eventos) y se lee junto al estado
-    ultima_secuencia  INTEGER     NOT NULL DEFAULT 0,   -- regla de orden: se descarta secuencia <= a esta
+    motivo_fallo      TEXT,                             
+    reprogramacion    JSONB,                            
+    historial         JSONB       NOT NULL DEFAULT '[]', 
+    ultima_secuencia  INTEGER     NOT NULL DEFAULT 0,   
     actualizado_en    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -63,16 +54,7 @@ CREATE TABLE notificaciones (
 
 CREATE INDEX idx_notificaciones_shipment ON notificaciones (shipment_id);
 
--- ---------------------------------------------------------------------------
--- metricas_diarias  (la escribe el servicio de ANALÍTICA)
--- Agregados por día, zona y franja horaria. Se actualiza con incrementos atómicos:
---   INSERT ... ON CONFLICT (fecha, zona_id, franja)
---   DO UPDATE SET fallos_total = metricas_diarias.fallos_total + 1;
--- Así no se recalcula nada sobre millones de filas en cada consulta del tablero.
---
--- OJO: el cuarto indicador (tiempo medio INGRESADO_HUB -> EN_REPARTO por hub)
--- NO está acá a propósito. En la demo (paso 8) se agrega con el sistema andando.
--- ---------------------------------------------------------------------------
+
 CREATE TABLE metricas_diarias (
     fecha                    DATE    NOT NULL,
     zona_id                  TEXT    NOT NULL,
@@ -93,14 +75,6 @@ CREATE TABLE metricas_diarias (
     CONSTRAINT uq_metricas UNIQUE (fecha, zona_id, franja)
 );
 
--- ---------------------------------------------------------------------------
--- eventos_procesados  (la escribe CADA consumidor)
--- Es la base de la idempotencia: antes de aplicar un evento, el consumidor intenta
--- insertar (consumidor, event_id). Si ya existe, el evento es duplicado y se descarta.
---
--- Mongo tenía un índice TTL de 7 días; Postgres no lo trae. Se reemplaza por una
--- limpieza periódica:  DELETE FROM eventos_procesados WHERE procesado_en < now() - interval '7 days';
--- ---------------------------------------------------------------------------
 CREATE TABLE eventos_procesados (
     consumidor    TEXT        NOT NULL,
     event_id      TEXT        NOT NULL,
@@ -110,16 +84,6 @@ CREATE TABLE eventos_procesados (
 
 CREATE INDEX idx_eventos_procesados_fecha ON eventos_procesados (procesado_en);
 
--- ---------------------------------------------------------------------------
--- monitor_sla  (la escribe el MONITOR DE SLA)
--- Estado interno del monitor (CU3): "una tabla por envío con último estado y
--- vencimiento", construida desde envios.estados y envios.promesas.
---
--- Está en PostgreSQL para poder REANUDAR tras un reinicio: las reglas que ya
--- alertaron (reglas_alertadas) sobreviven al proceso, así "una misma regla no
--- vuelve a alertar" y "tras reiniciar el monitor no se pierden ni se repiten
--- alertas". En el PDF esto era "estado en memoria con respaldo en MongoDB".
--- ---------------------------------------------------------------------------
 CREATE TABLE monitor_sla (
     shipment_id        TEXT PRIMARY KEY,
     estado             TEXT NOT NULL,             -- último estado de envios.estados aplicado
@@ -136,13 +100,7 @@ CREATE TABLE monitor_sla (
 -- El tick evalúa todos los envíos abiertos.
 CREATE INDEX idx_monitor_sla_abiertos ON monitor_sla (terminado);
 
--- ---------------------------------------------------------------------------
--- metricas_tiempos  (la escribe el grupo NUEVO de ANALÍTICA: analitica-tiempos)
--- CUARTO INDICADOR (reprocesamiento): tiempo medio entre INGRESADO_HUB y
--- EN_REPARTO por hub y día. Se lanza con `npm run analitica:tiempos` (o desde el
--- panel de demo): el grupo es nuevo, así que lee envios.estados desde el inicio
--- y completa el histórico sin reiniciar los demás servicios.
--- ---------------------------------------------------------------------------
+
 CREATE TABLE metricas_tiempos (
     fecha    DATE    NOT NULL,                 -- día (UTC) del EN_REPARTO
     hub_id   TEXT    NOT NULL,
@@ -151,14 +109,6 @@ CREATE TABLE metricas_tiempos (
     PRIMARY KEY (fecha, hub_id)
 );
 
--- ---------------------------------------------------------------------------
--- Tiempo real para la interfaz: LISTEN / NOTIFY
--- Reemplaza a los "change streams" de MongoDB. Cada cambio en envios o alertas
--- avisa por un canal; el route handler de Next.js escucha ese canal y reenvía
--- los avisos al navegador por Server-Sent Events (SSE).
--- El aviso lleva solo datos mínimos (NOTIFY admite ~8 KB); la interfaz lee el
--- detalle completo de la tabla.
--- ---------------------------------------------------------------------------
 CREATE FUNCTION notificar_cambio_envio() RETURNS trigger AS $$
 BEGIN
     PERFORM pg_notify(

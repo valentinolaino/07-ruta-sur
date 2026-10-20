@@ -1,6 +1,4 @@
 // Proxy al simulador (puerto 4000) para el panel /demo.
-//   GET  /api/escenarios            -> lista de escenarios disponibles
-//   POST /api/escenarios {nombre}   -> lanza un escenario
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +12,7 @@ export async function GET() {
   } catch (e) {
     return Response.json(
       { error: `No se pudo contactar al simulador: ${e}` },
-      { status: 502 }
+      { status: 502 },
     );
   }
 }
@@ -26,9 +24,12 @@ export async function POST(req) {
     return Response.json({ error: "nombre requerido" }, { status: 400 });
   }
   try {
-    const res = await fetch(`${base()}/escenarios/${encodeURIComponent(nombre)}`, {
-      method: "POST",
-    });
+    const res = await fetch(
+      `${base()}/escenarios/${encodeURIComponent(nombre)}`,
+      {
+        method: "POST",
+      },
+    );
     const texto = await res.text();
     let data;
     try {
@@ -40,7 +41,7 @@ export async function POST(req) {
   } catch (e) {
     return Response.json(
       { error: `No se pudo contactar al simulador: ${e}` },
-      { status: 502 }
+      { status: 502 },
     );
   }
 }

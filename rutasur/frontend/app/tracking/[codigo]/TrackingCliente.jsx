@@ -4,9 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { tonoEstado } from "@/lib/estados";
 import { fechaHora } from "@/lib/tiempo";
 
-// Tracking público: estado actual, fecha estimada y línea de tiempo, sin datos internos.
-// Se actualiza en vivo: escucha el SSE /api/en-vivo (que a su vez escucha NOTIFY de Postgres)
-// y vuelve a pedir el envío cuando hay un cambio. Nunca habla con Kafka.
 export default function TrackingCliente() {
   const [codigo, setCodigo] = useState("");
   const [envio, setEnvio] = useState(null);
@@ -20,7 +17,9 @@ export default function TrackingCliente() {
       setErr("");
     }
     try {
-      const r = await fetch(`/api/tracking?codigo=${encodeURIComponent(c)}`, { cache: "no-store" });
+      const r = await fetch(`/api/tracking?codigo=${encodeURIComponent(c)}`, {
+        cache: "no-store",
+      });
       const d = await r.json();
       if (!d.envio) {
         if (!silencioso) {
@@ -53,7 +52,8 @@ export default function TrackingCliente() {
   useEffect(() => {
     const es = new EventSource("/api/en-vivo");
     es.addEventListener("cambio", () => {
-      if (codigoActivo.current) consultar(codigoActivo.current, { silencioso: true });
+      if (codigoActivo.current)
+        consultar(codigoActivo.current, { silencioso: true });
     });
     es.onerror = () => {};
     return () => es.close();
@@ -64,7 +64,9 @@ export default function TrackingCliente() {
       <header className="cabecera">
         <div>
           <h1>Seguí tu envío</h1>
-          <p className="sub">Ingresá tu código para ver dónde está tu paquete</p>
+          <p className="sub">
+            Ingresá tu código para ver dónde está tu paquete
+          </p>
         </div>
       </header>
 
@@ -80,7 +82,11 @@ export default function TrackingCliente() {
               placeholder="Ej. ENV-000001"
             />
           </div>
-          <button className="btn" onClick={() => consultar(codigo)} disabled={buscando}>
+          <button
+            className="btn"
+            onClick={() => consultar(codigo)}
+            disabled={buscando}
+          >
             {buscando ? "Buscando..." : "Buscar"}
           </button>
           {err && <div className="muted">{err}</div>}
@@ -94,7 +100,9 @@ export default function TrackingCliente() {
             <div className="kv">
               <div className="k">Estado</div>
               <div>
-                <span className={`chip chip-${tonoEstado(envio.estado)}`}>{envio.etiqueta}</span>
+                <span className={`chip chip-${tonoEstado(envio.estado)}`}>
+                  {envio.etiqueta}
+                </span>
               </div>
               {envio.estimada && (
                 <>
@@ -102,7 +110,9 @@ export default function TrackingCliente() {
                   <div>
                     {envio.estimada.franja
                       ? `${new Date(envio.estimada.fecha + "T00:00:00").toLocaleDateString("es-AR")} · ${
-                          envio.estimada.franja === "MANANA" ? "mañana" : "tarde"
+                          envio.estimada.franja === "MANANA"
+                            ? "mañana"
+                            : "tarde"
                         }`
                       : fechaHora(envio.estimada.fecha)}
                   </div>
@@ -119,12 +129,16 @@ export default function TrackingCliente() {
               {envio.linea.map((h, i) => (
                 <li key={`${h.ocurridoEn}-${i}`} className="item">
                   <div className="bloque">
-                    <div><strong>{h.etiqueta}</strong></div>
+                    <div>
+                      <strong>{h.etiqueta}</strong>
+                    </div>
                     <div className="meta">{fechaHora(h.ocurridoEn)}</div>
                   </div>
                 </li>
               ))}
-              {envio.linea.length === 0 && <li className="muted">Todavía no hay movimientos.</li>}
+              {envio.linea.length === 0 && (
+                <li className="muted">Todavía no hay movimientos.</li>
+              )}
             </ul>
           </section>
         </>

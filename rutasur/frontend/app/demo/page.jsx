@@ -3,14 +3,6 @@
 import { useEffect, useState } from "react";
 
 // Pantalla de demo / escenarios.
-//
-// IMPORTANTE: la API /api/escenarios devuelve UN ARRAY directo
-//   [{ nombre, descripcion }, ...]   (y no { escenarios: [...] })
-// Antes se parseaba mal y el select quedaba SIN opciones: por eso el
-// desplegable "no funcionaba" y el botón Lanzar no hacía nada.
-//
-// La pantalla se rediseñó con tarjetas por escenario (más aire, un botón por
-// escenario) más un selector de respaldo.
 
 export default function Demo() {
   const [esc, setEsc] = useState([]);
@@ -32,7 +24,7 @@ export default function Demo() {
     } catch (e) {
       setEsc([]);
       setLog(
-        `No se pudo leer la lista de escenarios (¿corre el simulador en el puerto 4000?).\n${e}`
+        `No se pudo leer la lista de escenarios (¿corre el simulador en el puerto 4000?).\n${e}`,
       );
     } finally {
       setCargandoLista(false);
@@ -69,7 +61,6 @@ export default function Demo() {
 
   useEffect(() => {
     cargarEsc();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -83,8 +74,12 @@ export default function Demo() {
           </p>
         </div>
         <div className="acciones">
-          <a href="/analitica" className="btn">Analítica</a>
-          <a href="/" className="btn">Volver a torre</a>
+          <a href="/analitica" className="btn">
+            Analítica
+          </a>
+          <a href="/" className="btn">
+            Volver a torre
+          </a>
         </div>
       </header>
 
@@ -92,29 +87,40 @@ export default function Demo() {
       <section className="panel">
         <div className="panel-titulo">
           <h2>Escenarios del simulador</h2>
-          <button className="btn ghost" onClick={cargarEsc} disabled={cargandoLista}>
+          <button
+            className="btn ghost"
+            onClick={cargarEsc}
+            disabled={cargandoLista}
+          >
             {cargandoLista ? "Cargando…" : "Actualizar lista"}
           </button>
         </div>
 
         {esc.length === 0 && !cargandoLista && (
           <p className="muted">
-            Sin escenarios: ¿está levantado el simulador? (<code>npm run todo</code> o{" "}
-            <code>npm run simulador</code>).
+            Sin escenarios: ¿está levantado el simulador? (
+            <code>npm run todo</code> o <code>npm run simulador</code>).
           </p>
         )}
 
         <div className="demo-grid">
           {esc.map((x) => {
             const enCurso = lanzando === x.nombre;
-            const ok = ultimo && ultimo.nombre === x.nombre ? ultimo.ok : undefined;
+            const ok =
+              ultimo && ultimo.nombre === x.nombre ? ultimo.ok : undefined;
             return (
               <div key={x.nombre} className="demo-card">
                 <div className="demo-card-titulo">
                   <span className="codigo">{x.nombre}</span>
-                  {ok === true && <span className="chip chip-verde">lanzado</span>}
-                  {ok === false && <span className="chip chip-rojo">error</span>}
-                  {ok === null && <span className="chip chip-azul">en curso</span>}
+                  {ok === true && (
+                    <span className="chip chip-verde">lanzado</span>
+                  )}
+                  {ok === false && (
+                    <span className="chip chip-rojo">error</span>
+                  )}
+                  {ok === null && (
+                    <span className="chip chip-azul">en curso</span>
+                  )}
                 </div>
                 <p className="demo-desc">{x.descripcion}</p>
                 <button
@@ -166,16 +172,21 @@ export default function Demo() {
                 ultimo.ok === true
                   ? "chip chip-verde"
                   : ultimo.ok === false
-                  ? "chip chip-rojo"
-                  : "chip chip-azul"
+                    ? "chip chip-rojo"
+                    : "chip chip-azul"
               }
             >
-              {ultimo.ok === true ? "ok" : ultimo.ok === false ? "error" : "en curso"}
+              {ultimo.ok === true
+                ? "ok"
+                : ultimo.ok === false
+                  ? "error"
+                  : "en curso"}
             </span>
           </div>
           <pre className="codigo bloque-codigo">{ultimo.detalle}</pre>
           <p className="meta">
-            Andá a la <a href="/">torre</a>: los eventos deberían aparecer en vivo.
+            Andá a la <a href="/">torre</a>: los eventos deberían aparecer en
+            vivo.
           </p>
         </section>
       )}
@@ -198,8 +209,12 @@ export default function Demo() {
             <p className="demo-desc">
               Desde una terminal en <code>rutasur/</code>:
             </p>
-            <pre className="codigo bloque-codigo">npm run analitica:tiempos</pre>
-            <p className="meta">Se corta con Ctrl+C. El avance se ve en /analitica.</p>
+            <pre className="codigo bloque-codigo">
+              npm run analitica:tiempos
+            </pre>
+            <p className="meta">
+              Se corta con Ctrl+C. El avance se ve en /analitica.
+            </p>
           </div>
           <div className="demo-card">
             <div className="demo-card-titulo">

@@ -1,12 +1,4 @@
 -- RutaSur - migración para volúmenes de PostgreSQL ya creados
---
--- db/init.sql SOLO se ejecuta la primera vez que se crea el volumen. Si tu entorno
--- ya está corriendo y aparecieron tablas nuevas (monitor_sla, metricas_tiempos),
--- aplicá este archivo SIN borrar nada:
---
---   docker compose exec -T postgres psql -U rutasur -d rutasur < db/migracion.sql
---
--- (En una máquina limpia no hace falta: init.sql ya trae todo.)
 
 CREATE TABLE IF NOT EXISTS monitor_sla (
     shipment_id        TEXT PRIMARY KEY,

@@ -1,13 +1,12 @@
-// Analítica (CU4) — SERVER COMPONENT.
-// Los filtros viajan en la URL (?zona=ZONA-C&hub=HUB-2&desde=2026-10-19&hasta=2026-10-20):
-// el formulario es un GET, así la página se renderiza en el servidor con los datos filtrados.
+// Analítica — SERVER COMPONENT.
 
 import { indicadores, alertasRecientes, enviosEnRiesgo } from "@/lib/consultas";
 import AnaliticaCliente from "./AnaliticaCliente";
 
 export const dynamic = "force-dynamic";
 
-const texto = (v) => (typeof v === "string" ? v : Array.isArray(v) ? v[0] : "") || "";
+const texto = (v) =>
+  (typeof v === "string" ? v : Array.isArray(v) ? v[0] : "") || "";
 
 export default async function Analitica({ searchParams }) {
   const sp = (await searchParams) || {};

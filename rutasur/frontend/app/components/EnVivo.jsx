@@ -3,9 +3,6 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-// Se suscribe al SSE de /api/en-vivo y refresca los datos del server component
-// cuando llega un cambio real (NOTIFY de Postgres). Es la "latencia
-// evento→pantalla": evento en Kafka -> proyector -> Postgres -> NOTIFY -> SSE -> refresh.
 export default function EnVivo({ soloPorEvento = true }) {
   const router = useRouter();
 
