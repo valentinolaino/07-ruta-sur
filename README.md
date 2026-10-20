@@ -53,31 +53,20 @@
 
 > **Importante:** `docker-compose.yml` publica Postgres en `5434` (host) → `5432` (contenedor), porque el `5433` puede estar tomado por otros servicios de tu máquina. `shared/config.js`, `frontend/lib/db.js` y `scripts/*` usan `5434` por defecto. Si lo cambiás, ajustá los tres (o usá `DATABASE_URL`).
 
-## Arranque rápido
+## Arranque rápido (un solo comando)
 
-Todo desde `rutasur/`:
+Requisitos: Node.js 20+ y Docker. Desde `rutasur/`:
 
 ```bash
-# 1) Infraestructura
 cd rutasur
-docker compose up -d
-
-# 1b) Si venías de un volumen viejo de Postgres, aplicá la migración
-#     (agrega monitor_sla y metricas_tiempos). En PowerShell:
-#     Get-Content db/migracion.sql -Raw | docker exec -i rutasur-postgres psql -U rutasur -d rutasur
-
-# 2) Verificar todo (estructura, puertos, topics)
-npm run verificar
-
-# 3) Dependencias del frontend (una sola vez)
-cd frontend; npm install; cd ..
-
-# 4) Levantar simulador + 5 consumidores + frontend
-npm run todo
+npm start
 ```
 
-- `npm run todo` lanza: `simulador`, `proyector`, `notificaciones`, `reprogramacion`, `monitor-sla`, `analitica`, `frontend`. Prefijos `[nombre]` en logs.
-- Flags: `npm run todo -- --sin-frontend` o `npm run todo -- --sin-simulador` si querés aislar.
+`npm start` (`scripts/arrancar.js`) levanta Kafka + Postgres con Docker, instala las dependencias si faltan (servicios y frontend), espera a que la infraestructura esté lista y lanza el simulador, los 5 servicios y el frontend. Ctrl+C los detiene a todos. Acepta `npm start -- --sin-simulador` y `npm start -- --sin-frontend`.
+
+- Si venías de un volumen viejo de Postgres, aplicá la migración (agrega `monitor_sla` y `metricas_tiempos`):
+  `Get-Content db/migracion.sql -Raw | docker exec -i rutasur-postgres psql -U rutasur -d rutasur` (PowerShell).
+- Cada proceso lleva el prefijo `[nombre]` en los logs.
 
 Servicios individuales (útiles para debug):
 
@@ -88,9 +77,18 @@ npm run reprogramacion
 npm run monitor
 npm run analitica
 npm run analitica:tiempos  # grupo nuevo, lee desde inicio
-npm run frontend           # next dev
 npm run simulador
+cd frontend && npm run dev # Next.js (puerto 3000)
 ```
+
+## Observabilidad: lag de cada grupo
+
+```bash
+npm run lag              # una foto: lag por grupo y topic
+npm run lag -- --watch   # se refresca cada 2 s
+```
+
+`lag = último offset del topic - offset confirmado del grupo`. Si se detiene un servicio (por ejemplo `notificaciones`, paso 5 de la demo), su lag crece; al reiniciarlo vuelve a 0. Cada servicio además registra `eventId`, partición y offset de cada evento que procesa.
 
 ## Tests
 
@@ -99,7 +97,7 @@ cd rutasur
 npm test
 ```
 
-Resultado esperado: **96/96 tests OK** (tests de `servicios/monitor-sla/evaluar.test.js` y `servicios/analitica/indicadores.test.js`).
+Corre los tests unitarios de `shared`, `simulador` y `servicios` (reducer del proyector, reglas del monitor de SLA, indicadores de analítica, plan del simulador). Todos deben pasar.
 
 ## Reconstruir vistas desde cero (reprocesamiento completo)
 
@@ -107,7 +105,7 @@ Resultado esperado: **96/96 tests OK** (tests de `servicios/monitor-sla/evaluar.
 
 ```bash
 cd rutasur
-# Asegurate de tener los servicios DETENIDOS (Ctrl+C en npm run todo o kill)
+# Asegurate de tener los servicios DETENIDOS (Ctrl+C en npm start o kill)
 npm run reconstruir
 ```
 
@@ -116,14 +114,20 @@ Lo que hace:
 2. Resetea offsets a `earliest` para **todos** los grupos (`proyector`, `notificaciones`, `reprogramacion`, `monitor-sla`, `analitica`, `analitica-tiempos`) vía `kafka.admin.resetOffsets`.
 3. Al volver a levantar los consumidores, reaplican todo el historial de `envios.estados`/`envios.promesas`/`notificaciones.*`/`alertas.sla`.
 
+Para reconstruir **solo** `envios` (borrar la colección y reprocesar el topic con el proyector):
+
+```bash
+npm run reconstruir:envios
+```
+
 ## Frontend — Pantallas
 
 | Ruta | Descripción |
 |---|---|
-| `/` (torre) | **CU1**. KPIs, proyección por hora, embudo, últimos envíos, "evento→pantalla" con reloj simulado. Actualización via SSE. |
+| `/` (torre) | **CU1**. KPIs, proyección por hora, embudo, **cola de alertas abiertas priorizada** (crítica > alta > media), últimos envíos, "evento→pantalla" con reloj simulado. Actualización via SSE. |
 | `/envio/[id]` | **CU1**. Detalle completo + línea de tiempo (`events`) + alertas + notificaciones. |
-| `/tracking/[codigo]` | Tracking por código de envío (estado + línea de tiempo). |
-| `/analitica` | **CU4**. Totales, tasas, motivos de fallo, SLA, y **metricas_tiempos** (INGRESADO_HUB→EN_REPARTO p50/p95). Muestra alertas recientes y envíos en riesgo (<6h). |
+| `/tracking/[codigo]` | **Tracking público** (destinatario). Solo estado, fecha estimada y recorrido, **sin datos internos** (repartidor, zona, hub, intentos, motivos, alertas). Búsqueda por código exacto. Se actualiza en vivo por SSE. |
+| `/analitica` | **CU4**. Filtros por **zona, hub y fecha** (`?zona=ZONA-C&hub=HUB-2&desde=2026-10-19&hasta=2026-10-20`). Indicador 1: primer intento por zona y franja; 2: motivos de fallo por zona; 3: SLA por hub y día; 4: tiempo INGRESADO_HUB→EN_REPARTO por hub y día (`metricas_tiempos`). Además alertas recientes y envíos en riesgo (<6 h, según el reloj simulado). |
 | `/demo` | Lanzador de escenarios del simulador (proxy a `http://localhost:4000`). Instrucciones para correr `npm run analitica:tiempos` y reconstruir el 4to indicador. |
 
 El tiempo real llega por `GET /api/en-vivo` (SSE) escuchando `envios_cambios` y `alertas_cambios`. El panel se refresca al recibir eventos.
@@ -133,7 +137,7 @@ El tiempo real llega por `GET /api/en-vivo` (SSE) escuchando `envios_cambios` y 
 - **CU1 Proyección:** embudo por estado, conteo por hora de vencimiento, listado con "hace X" y latencia **evento→pantalla < 2s**.
 - **CU2 Entrega fallida / reprogramación:** registro de fallos, intentos, motivo, reprogramación propuesta/aplicada (visto en detalle/envíos).
 - **CU3 Riesgo de SLA:** 4 reglas evaluadas, alertas `ABIERTA/CERRADA`, sin repetición por (shipment_id, regla), cierre automático al recibir `ENTREGADO`/cambio que deja de aplicar, resiliente a reinicio (tabla `monitor_sla`).
-- **CU4 Analítica + reprocesamiento:** 3 indicadores en `metricas_diarias`, 4to indicador en `metricas_tiempos` con grupo **analitica-tiempos** que lee desde inicio (reprocesable sin tocar otros grupos).
+- **CU4 Analítica + reprocesamiento:** (filtros por zona, hub y fecha en el panel) 3 indicadores en `metricas_diarias`, 4to indicador en `metricas_tiempos` con grupo **analitica-tiempos** que lee desde inicio (reprocesable sin tocar otros grupos).
 
 ## Notas
 
@@ -148,8 +152,8 @@ El tiempo real llega por `GET /api/en-vivo` (SSE) escuchando `envios_cambios` y 
 # En rutasur/
 docker compose ps
 npm run verificar
-npm test  # 96/96
-# En otra terminal: npm run todo
+npm test
+npm start   # levanta todo (infraestructura + servicios + frontend)
 # En navegador: http://localhost:3000
 ```
 

@@ -1,11 +1,4 @@
 // Generador de números pseudoaleatorios con SEMILLA.
-//
-// Math.random() no se puede fijar: cada corrida da algo distinto. Acá, la misma
-// semilla produce SIEMPRE la misma secuencia, y eso permite "repetir exactamente
-// la misma corrida" (parámetro "Semilla aleatoria: fija" del PDF) y comparar los
-// indicadores contra un recuento manual (criterio de aceptación de analítica).
-//
-// Algoritmo: mulberry32, chico y suficiente para una simulación.
 
 function crearRng(semilla) {
   let estado = semilla >>> 0;
@@ -49,8 +42,10 @@ function crearRng(semilla) {
     // UUID v4 determinista (crypto.randomUUID() no se puede fijar con semilla).
     uuid() {
       const hex = (n) =>
-        Array.from({ length: n }, () => Math.floor(siguiente() * 16).toString(16)).join('');
-      const variante = '89ab'[Math.floor(siguiente() * 4)];
+        Array.from({ length: n }, () =>
+          Math.floor(siguiente() * 16).toString(16),
+        ).join("");
+      const variante = "89ab"[Math.floor(siguiente() * 4)];
       return `${hex(8)}-${hex(4)}-4${hex(3)}-${variante}${hex(3)}-${hex(12)}`;
     },
   };

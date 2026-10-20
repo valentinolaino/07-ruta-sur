@@ -158,3 +158,63 @@ textarea { min-height: 80px; font-family: ui-monospace, Menlo, monospace; font-s
 }
 .demo-selector label { color: var(--muted); font-size: 13px; }
 .demo-selector select.input { min-width: 190px; }
+
+/* ---------------------------------------------------------------- /analitica */
+/* Todo con prefijo "an-" para no afectar a las otras pantallas. */
+
+.an-filtros {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(140px, 1fr)) auto;
+  gap: 14px;
+  align-items: end;
+}
+.an-filtros .field label { color: var(--muted); font-size: 12px; font-weight: 600; }
+.an-filtros .input { width: 100%; height: 36px; background: #fff; }
+.an-filtros-acc { display: flex; gap: 8px; }
+.an-filtros-acc .btn { height: 36px; display: inline-flex; align-items: center; }
+.an-btn-primario { background: var(--azul); border-color: var(--azul); color: #fff; }
+.an-btn-primario:hover { background: #1d4ed8; }
+
+.an-kpis {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.an-dos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+  align-items: stretch;
+}
+.an-dos > .an-panel { margin-bottom: 0; }
+
+.an-panel { display: flex; flex-direction: column; min-width: 0; }
+.an-panel h2 { font-size: 16px; margin-bottom: 4px; }
+.an-nota { margin: 0 0 10px; }
+
+.an-scroll { overflow: auto; max-height: 340px; }
+.an-scroll-lista { max-height: 420px; padding-right: 2px; }
+.an-tabla thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; white-space: nowrap; }
+.an-tabla tbody td { vertical-align: middle; }
+.an-tabla tbody tr:hover { background: #f8fafc; }
+.an-n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.an-tabla thead th.an-n { text-align: right; }
+.an-top { background: #fff7ed; }
+.an-vacio { text-align: center; padding: 20px 8px !important; line-height: 1.6; }
+
+.an-barra { display: flex; align-items: center; gap: 8px; min-width: 130px; }
+.an-barra-pista { flex: 1; height: 8px; background: #e2e8f0; border-radius: 999px; overflow: hidden; }
+.an-barra-relleno { height: 100%; border-radius: 999px; }
+.an-azul { background: var(--azul); }
+.an-verde { background: var(--verde); }
+.an-barra-txt { font-size: 12px; font-variant-numeric: tabular-nums; min-width: 48px; text-align: right; }
+
+@media (max-width: 1000px) {
+  .an-dos { grid-template-columns: 1fr; }
+  .an-kpis { grid-template-columns: repeat(3, 1fr); }
+  .an-filtros { grid-template-columns: repeat(2, 1fr); }
+  .an-filtros-acc { grid-column: 1 / -1; }
+}

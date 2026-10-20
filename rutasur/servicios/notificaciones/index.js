@@ -1,25 +1,20 @@
-// SERVICIO DE NOTIFICACIONES (CU2)
-//
-// Registra un aviso al destinatario cuando un envío falla (envios.estados) o cuando el
-// monitor de SLA emite una alerta (alertas.sla), y publica ese aviso en
-// notificaciones.enviadas. El proyector lo guarda en PostgreSQL.
-//
-// Arranque:  npm run notificaciones
+const { consumir, crearProductor, publicar } = require("../../shared/kafka");
+const { conTransaccion, registrarEventoProcesado } = require("../../shared/db");
+const {
+  TOPICS,
+  GRUPOS,
+  crearEvento,
+  idDerivado,
+} = require("../../shared/eventos");
+const { log } = require("../../shared/logger");
+const { construirNotificacion } = require("./mensajes");
 
-const { consumir, crearProductor, publicar } = require('../../shared/kafka');
-const { conTransaccion, registrarEventoProcesado } = require('../../shared/db');
-const { TOPICS, GRUPOS, crearEvento, idDerivado } = require('../../shared/eventos');
-const { log } = require('../../shared/logger');
-const { construirNotificacion } = require('./mensajes');
+const SERVICIO = "notificaciones";
 
-const SERVICIO = 'notificaciones';
-
-// Qué identifica "el mismo hecho" para derivar el id del aviso:
-//   - un estado del envío: (envío + secuencia). Así una copia vieja del mismo fallo, que
-//     llega con otro eventId, no genera un segundo aviso.
-//   - una alerta: su propio eventId (el monitor ya lo hace determinista).
 function claveOrigen(topic, evento) {
-  return topic === TOPICS.ESTADOS ? `${evento.shipmentId}#${evento.secuencia}` : evento.eventId;
+  return topic === TOPICS.ESTADOS
+    ? `${evento.shipmentId}#${evento.secuencia}`
+    : evento.eventId;
 }
 
 async function main() {
@@ -34,9 +29,16 @@ async function main() {
       if (!notificacion) return; // este evento no genera aviso
 
       await conTransaccion(async (client) => {
-        const esNuevo = await registrarEventoProcesado(client, GRUPOS.NOTIFICACIONES, evento.eventId);
+        const esNuevo = await registrarEventoProcesado(
+          client,
+          GRUPOS.NOTIFICACIONES,
+          evento.eventId,
+        );
         if (!esNuevo) {
-          log(SERVICIO, 'evento duplicado descartado', { eventId: evento.eventId, ...ubicacion });
+          log(SERVICIO, "evento duplicado descartado", {
+            eventId: evento.eventId,
+            ...ubicacion,
+          });
           return;
         }
 
@@ -54,7 +56,10 @@ async function main() {
           origenTipo: evento.tipo,
           // Derivado del hecho que lo causó: "exactamente una notificación por fallo"
           // aunque el servicio se reinicie y reprocese, o llegue una copia vieja.
-          eventId: idDerivado('notificacion', claveOrigen(ubicacion.topic, evento)),
+          eventId: idDerivado(
+            "notificacion",
+            claveOrigen(ubicacion.topic, evento),
+          ),
         });
 
         await publicar(productor, TOPICS.NOTIFICACIONES, aviso);
@@ -66,7 +71,7 @@ async function main() {
       });
     },
   });
-  log(SERVICIO, 'escuchando eventos', { grupo: GRUPOS.NOTIFICACIONES });
+  log(SERVICIO, "escuchando eventos", { grupo: GRUPOS.NOTIFICACIONES });
 }
 
 if (require.main === module) {

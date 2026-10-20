@@ -1,15 +1,9 @@
 // Conexión a Kafka: productor y consumidor reutilizables por todos los servicios.
-//
-// Decisiones del PDF que se implementan acá:
-//   - Garantía "al menos una vez": el offset se confirma DESPUÉS de procesar, y no antes.
-//   - Confirmación manual de offsets (autoCommit apagado).
-//   - Evento inválido -> va a la DLQ con el motivo y el consumo continúa.
-//   - Observabilidad: cada evento procesado registra eventId, partición y offset.
 
-const { Kafka, logLevel } = require('kafkajs');
-const config = require('./config');
-const { TOPICS, validarEvento } = require('./eventos');
-const { log, logError } = require('./logger');
+const { Kafka, logLevel } = require("kafkajs");
+const config = require("./config");
+const { TOPICS, validarEvento } = require("./eventos");
+const { log, logError } = require("./logger");
 
 function crearKafka(clientId) {
   return new Kafka({
@@ -47,7 +41,10 @@ async function publicar(producer, topic, evento) {
 async function publicarLote(producer, topic, eventos) {
   await producer.send({
     topic,
-    messages: eventos.map((e) => ({ key: e.shipmentId, value: JSON.stringify(e) })),
+    messages: eventos.map((e) => ({
+      key: e.shipmentId,
+      value: JSON.stringify(e),
+    })),
   });
 }
 
@@ -60,33 +57,21 @@ async function publicarCrudo(producer, topic, clave, texto) {
 // ---------------------------------------------------------------------------
 // Consumidor
 // ---------------------------------------------------------------------------
-
-// Arranca un consumidor y llama a "manejar(evento, ubicacion)" por cada evento VÁLIDO.
-//
-// Parámetros:
-//   servicio    nombre para los logs (ej: 'proyector')
-//   groupId     grupo de consumidores (ver GRUPOS en eventos.js)
-//   topics      lista de topics a leer. Cada entrada puede ser:
-//                 'nombre.topic'            -> usa la opción "desdeInicio" de abajo
-//                 { nombre, desdeInicio }   -> opcional por topic (ver más abajo)
-//   manejar     async (evento, { topic, particion, offset }) => { ... }
-//   desdeInicio true = si el grupo es nuevo, empieza desde el primer evento del topic
-//               (así se hace el reprocesamiento del CU4). Si el grupo ya tiene offsets
-//               guardados, esta opción se ignora y retoma desde donde quedó.
-//
-// Por-topic: útil cuando un topic es compactado y conviene releerlo entero aunque
-// el resto no. Ej: el monitor de SLA suscribe envios.promesas desde el inicio
-// (así recupera la promesa de envíos abiertos de antes de su arranque) pero
-// envios.estados no (no quiere reabrir alertas de envíos viejos ya resueltos).
-async function consumir({ servicio, groupId, topics, manejar, desdeInicio = false }) {
+async function consumir({
+  servicio,
+  groupId,
+  topics,
+  manejar,
+  desdeInicio = false,
+}) {
   const kafka = crearKafka(servicio);
   const consumer = kafka.consumer({ groupId });
   const productorDlq = await crearProductor(`${servicio}-dlq`);
 
   await consumer.connect();
   for (const item of topics) {
-    const nombre = typeof item === 'string' ? item : item.nombre;
-    const desde = typeof item === 'string' ? desdeInicio : item.desdeInicio;
+    const nombre = typeof item === "string" ? item : item.nombre;
+    const desde = typeof item === "string" ? desdeInicio : item.desdeInicio;
     await consumer.subscribe({ topic: nombre, fromBeginning: desde });
   }
 
@@ -94,7 +79,7 @@ async function consumir({ servicio, groupId, topics, manejar, desdeInicio = fals
     autoCommit: false, // los offsets los confirmamos nosotros, después de procesar
     eachMessage: async ({ topic, partition, message }) => {
       const ubicacion = { topic, particion: partition, offset: message.offset };
-      const textoCrudo = message.value ? message.value.toString() : '';
+      const textoCrudo = message.value ? message.value.toString() : "";
 
       // 1) ¿Es un JSON?  2) ¿Cumple el esquema?
       let evento = null;
@@ -102,16 +87,16 @@ async function consumir({ servicio, groupId, topics, manejar, desdeInicio = fals
       try {
         evento = JSON.parse(textoCrudo);
       } catch {
-        motivoInvalido = 'JSON inválido';
+        motivoInvalido = "JSON inválido";
       }
       if (!motivoInvalido) {
         const resultado = validarEvento(topic, evento);
-        if (!resultado.valido) motivoInvalido = resultado.errores.join('; ');
+        if (!resultado.valido) motivoInvalido = resultado.errores.join("; ");
       }
 
       if (motivoInvalido) {
         // Evento inválido: va a la DLQ con el motivo y el consumo continúa.
-        const clave = message.key ? message.key.toString() : 'desconocido';
+        const clave = message.key ? message.key.toString() : "desconocido";
         await productorDlq.send({
           topic: TOPICS.DLQ,
           messages: [
@@ -127,9 +112,12 @@ async function consumir({ servicio, groupId, topics, manejar, desdeInicio = fals
             },
           ],
         });
-        log(servicio, 'evento inválido enviado a la DLQ', { motivo: motivoInvalido, ...ubicacion });
+        log(servicio, "evento inválido enviado a la DLQ", {
+          motivo: motivoInvalido,
+          ...ubicacion,
+        });
       } else {
-        log(servicio, 'procesando evento', {
+        log(servicio, "procesando evento", {
           eventId: evento.eventId,
           tipo: evento.tipo,
           ...ubicacion,
@@ -146,19 +134,18 @@ async function consumir({ servicio, groupId, topics, manejar, desdeInicio = fals
     },
   });
 
-  // Ctrl+C: nos desconectamos prolijo para que Kafka reasigne las particiones enseguida.
   const cerrar = async () => {
-    log(servicio, 'cerrando consumidor...');
+    log(servicio, "cerrando consumidor...");
     try {
       await consumer.disconnect();
       await productorDlq.disconnect();
     } catch (error) {
-      logError(servicio, 'error al cerrar', error);
+      logError(servicio, "error al cerrar", error);
     }
     process.exit(0);
   };
-  process.on('SIGINT', cerrar);
-  process.on('SIGTERM', cerrar);
+  process.on("SIGINT", cerrar);
+  process.on("SIGTERM", cerrar);
 
   return consumer;
 }

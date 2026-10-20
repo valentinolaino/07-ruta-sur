@@ -29,11 +29,13 @@ export default function DetalleCliente({ detalle, movimientos, reloj }) {
         <div>
           <h1>Detalle de envío</h1>
           <p className="sub">
-            CU1 — Historial, alertas y notificaciones · último evento hace{" "}
+            Historial, alertas y notificaciones · último evento hace{" "}
             <Crono actualizado={e.actualizado_en} />
           </p>
         </div>
-        <a href="/" className="btn">Volver a torre</a>
+        <a href="/" className="btn">
+          Volver a torre
+        </a>
       </header>
 
       <section className="panel">
@@ -101,7 +103,9 @@ export default function DetalleCliente({ detalle, movimientos, reloj }) {
                     <strong>{a.regla}</strong> · {a.prioridad} ·{" "}
                     <span
                       className={
-                        a.estado === "ABIERTA" ? "chip chip-rojo" : "chip chip-gris"
+                        a.estado === "ABIERTA"
+                          ? "chip chip-rojo"
+                          : "chip chip-gris"
                       }
                     >
                       {a.estado}
@@ -114,7 +118,9 @@ export default function DetalleCliente({ detalle, movimientos, reloj }) {
                 </div>
               </li>
             ))}
-            {detalle.alertas.length === 0 && <li className="muted">Sin alertas.</li>}
+            {detalle.alertas.length === 0 && (
+              <li className="muted">Sin alertas.</li>
+            )}
           </ul>
 
           <h2 style={{ marginTop: 12 }}>Notificaciones</h2>

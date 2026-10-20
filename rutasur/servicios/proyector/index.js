@@ -1,24 +1,11 @@
-// SERVICIO PROYECTOR (CU1)
-//
-// Consume los eventos y mantiene en PostgreSQL las vistas de lectura que usa la interfaz:
-// envios, alertas y notificaciones. Es el único que escribe esas tablas.
-//
-// Cada evento se aplica dentro de UNA transacción que incluye:
-//   1. registrar (consumidor, eventId) en eventos_procesados   -> idempotencia
-//   2. aplicar el cambio a la tabla correspondiente
-// El offset de Kafka se confirma DESPUÉS (lo hace shared/kafka.js al volver "manejar").
-// Si algo falla a mitad, el rollback deshace todo y el evento se reintenta limpio.
-//
-// Arranque:  npm run proyector
+const { consumir } = require("../../shared/kafka");
+const { conTransaccion, registrarEventoProcesado } = require("../../shared/db");
+const { TOPICS, GRUPOS, TIPO_ALERTA_CERRADA } = require("../../shared/eventos");
+const { log } = require("../../shared/logger");
+const reducer = require("./reducer");
+const repo = require("./repositorio");
 
-const { consumir } = require('../../shared/kafka');
-const { conTransaccion, registrarEventoProcesado } = require('../../shared/db');
-const { TOPICS, GRUPOS, TIPO_ALERTA_CERRADA } = require('../../shared/eventos');
-const { log } = require('../../shared/logger');
-const reducer = require('./reducer');
-const repo = require('./repositorio');
-
-const SERVICIO = 'proyector';
+const SERVICIO = "proyector";
 
 // Aplica un evento de un topic que modifica el documento del envío.
 async function proyectarEnvio(client, evento, ubicacion, aplicar) {
@@ -26,7 +13,7 @@ async function proyectarEnvio(client, evento, ubicacion, aplicar) {
   const resultado = aplicar(doc, evento);
   if (resultado.aplicado) {
     await repo.guardarEnvio(client, resultado.doc);
-    log(SERVICIO, 'envío actualizado', {
+    log(SERVICIO, "envío actualizado", {
       shipmentId: evento.shipmentId,
       estado: resultado.doc.estado,
       eventId: evento.eventId,
@@ -44,9 +31,16 @@ async function proyectarEnvio(client, evento, ubicacion, aplicar) {
 async function manejar(evento, ubicacion) {
   await conTransaccion(async (client) => {
     // Idempotencia: ¿ya apliqué este eventId? Entonces es un duplicado.
-    const esNuevo = await registrarEventoProcesado(client, GRUPOS.PROYECTOR, evento.eventId);
+    const esNuevo = await registrarEventoProcesado(
+      client,
+      GRUPOS.PROYECTOR,
+      evento.eventId,
+    );
     if (!esNuevo) {
-      log(SERVICIO, 'evento duplicado descartado', { eventId: evento.eventId, ...ubicacion });
+      log(SERVICIO, "evento duplicado descartado", {
+        eventId: evento.eventId,
+        ...ubicacion,
+      });
       return;
     }
 
@@ -55,13 +49,24 @@ async function manejar(evento, ubicacion) {
         return proyectarEnvio(client, evento, ubicacion, reducer.aplicarEstado);
 
       case TOPICS.PROMESAS:
-        return proyectarEnvio(client, evento, ubicacion, reducer.aplicarPromesa);
+        return proyectarEnvio(
+          client,
+          evento,
+          ubicacion,
+          reducer.aplicarPromesa,
+        );
 
       case TOPICS.REPROGRAMACIONES:
-        return proyectarEnvio(client, evento, ubicacion, reducer.aplicarReprogramacion);
+        return proyectarEnvio(
+          client,
+          evento,
+          ubicacion,
+          reducer.aplicarReprogramacion,
+        );
 
       case TOPICS.ALERTAS_SLA: {
-        if (evento.tipo === TIPO_ALERTA_CERRADA) await repo.cerrarAlertas(client, evento);
+        if (evento.tipo === TIPO_ALERTA_CERRADA)
+          await repo.cerrarAlertas(client, evento);
         else await repo.abrirAlerta(client, evento);
         await repo.tocarEnvio(client, evento.shipmentId);
         return;
@@ -73,7 +78,7 @@ async function manejar(evento, ubicacion) {
         return;
 
       default:
-        log(SERVICIO, 'topic no esperado, se ignora', { ...ubicacion });
+        log(SERVICIO, "topic no esperado, se ignora", { ...ubicacion });
     }
   });
 }
@@ -91,10 +96,10 @@ async function main() {
     ],
     // PROYECTOR_DESDE_INICIO=1 -> si el grupo es nuevo, relee los topics desde el primer
     // evento. Sirve para reconstruir las vistas (requisito de reconstrucción).
-    desdeInicio: process.env.PROYECTOR_DESDE_INICIO === '1',
+    desdeInicio: process.env.PROYECTOR_DESDE_INICIO === "1",
     manejar,
   });
-  log(SERVICIO, 'escuchando eventos', { grupo: GRUPOS.PROYECTOR });
+  log(SERVICIO, "escuchando eventos", { grupo: GRUPOS.PROYECTOR });
 }
 
 if (require.main === module) {

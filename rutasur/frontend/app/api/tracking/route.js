@@ -1,7 +1,8 @@
-// Búsqueda de tracking: devuelve el envío + su historial embebido.
-// Uso: GET /api/tracking?codigo=ENV-000001 (acepta también coincidencia parcial).
+// Tracking PÚBLICO: devuelve solo lo que puede ver el destinatario (estado, fecha estimada
+// y línea de tiempo). Nada de repartidor, zona, hub, intentos, motivos, alertas ni ids internos.
+// Uso: GET /api/tracking?codigo=ENV-000001  (código exacto)
 
-import { buscarPorCodigo, detalleEnvio } from "@/lib/consultas";
+import { envioPublico } from "@/lib/consultas";
 
 export const dynamic = "force-dynamic";
 
@@ -10,21 +11,12 @@ export async function GET(req) {
   const codigo = searchParams.get("codigo") || "";
 
   try {
-    const envio = await buscarPorCodigo(codigo);
+    const envio = await envioPublico(codigo);
     if (!envio) {
-      return Response.json({
-        envio: null,
-        mensaje: `No se encontró un envío con "${codigo}"`,
-      });
+      return Response.json({ envio: null, mensaje: "No encontramos un envío con ese código" });
     }
-    const detalle = await detalleEnvio(envio.shipment_id);
-    return Response.json({
-      envio,
-      historial: envio.historial || [],
-      alertas: detalle ? detalle.alertas : [],
-      notificaciones: detalle ? detalle.notificaciones : [],
-    });
+    return Response.json({ envio });
   } catch (e) {
-    return Response.json({ envio: null, mensaje: String(e) }, { status: 500 });
+    return Response.json({ envio: null, mensaje: "No pudimos consultar el envío" }, { status: 500 });
   }
 }

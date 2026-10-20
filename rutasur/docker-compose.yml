@@ -1,13 +1,5 @@
 # RutaSur - entorno local
 # Se levanta TODO con un solo comando:  docker compose up -d
-#
-# Servicios de infraestructura:
-#   kafka       -> el log de eventos (un solo broker, modo KRaft: sin ZooKeeper)
-#   kafka-init  -> corre una vez, crea los 6 topics del catálogo y termina
-#   postgres    -> vistas de lectura (reemplaza a MongoDB)
-#
-# Los servicios Node.js (simulador, proyector, etc.) y Next.js se agregan
-# en pasos siguientes; por ahora corren fuera de Docker con `node`.
 
 services:
   kafka:
@@ -56,8 +48,6 @@ services:
         condition: service_healthy
     restart: "no"
     entrypoint: ["/bin/bash", "-c"]
-    # En docker compose, "$$" significa un "$" literal (si no, compose
-    # intentaría reemplazar la variable por su cuenta).
     command:
       - |
         set -e
@@ -87,7 +77,6 @@ services:
       POSTGRES_DB: rutasur
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # Todo .sql en esta carpeta se ejecuta SOLO la primera vez que se crea el volumen
       - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U rutasur -d rutasur"]

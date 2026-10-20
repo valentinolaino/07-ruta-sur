@@ -2,7 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { etiquetaEstado, tonoEstado, EMBUDO } from "@/lib/estados";
+import {
+  etiquetaEstado,
+  tonoEstado,
+  EMBUDO,
+  ESTADOS_FALLA,
+  etiquetaRegla,
+  tonoPrioridad,
+} from "@/lib/estados";
 import { hace, horaCorta, fijarRelojSimulado } from "@/lib/tiempo";
 import EnVivo from "./EnVivo";
 
@@ -20,7 +27,14 @@ function Crono({ actualizado }) {
   return <span>{v}</span>;
 }
 
-export default function TorreCliente({ kpis, porHora, envios, conteo, reloj }) {
+export default function TorreCliente({
+  kpis,
+  porHora,
+  envios,
+  conteo,
+  reloj,
+  alertas = [],
+}) {
   useEffect(() => {
     if (reloj) fijarRelojSimulado(reloj);
   }, [reloj]);
@@ -35,13 +49,19 @@ export default function TorreCliente({ kpis, porHora, envios, conteo, reloj }) {
         <div>
           <h1>RutaSur — Torre de control</h1>
           <p className="sub">
-            CU1 — Proyección · Actualización en vivo (SSE) · Reloj simulado
+            Proyección · Actualización en vivo (SSE) · Reloj simulado
           </p>
         </div>
         <div className="acciones">
-          <Link href="/tracking/" className="btn">Tracking</Link>
-          <Link href="/analitica" className="btn">Analítica</Link>
-          <Link href="/demo" className="btn">Demo / Escenarios</Link>
+          <Link href="/tracking/" className="btn">
+            Tracking
+          </Link>
+          <Link href="/analitica" className="btn">
+            Analítica
+          </Link>
+          <Link href="/demo" className="btn">
+            Demo / Escenarios
+          </Link>
         </div>
       </header>
 
@@ -62,7 +82,9 @@ export default function TorreCliente({ kpis, porHora, envios, conteo, reloj }) {
             <Barra key={f.ventana} hora={f.hora} {...f} />
           ))}
           {porHora.length === 0 && (
-            <p className="muted">Sin datos todavía: lanzá un escenario desde Demo.</p>
+            <p className="muted">
+              Sin datos todavía: lanzá un escenario desde Demo.
+            </p>
           )}
         </div>
       </section>
@@ -77,6 +99,47 @@ export default function TorreCliente({ kpis, porHora, envios, conteo, reloj }) {
             </div>
           ))}
         </div>
+        <div className="embudo" style={{ marginTop: 10 }}>
+          {ESTADOS_FALLA.map((s) => (
+            <div key={s} className="piso">
+              <div className="etq">{etiquetaEstado(s)}</div>
+              <div className="valor">{totalEmbudo.get(s) || 0}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel">
+        <h2>Cola de alertas ({alertas.length})</h2>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Alertas de SLA abiertas, de mayor a menor prioridad.
+        </p>
+        <ul className="lista">
+          {alertas.map((a) => (
+            <li key={a.id} className="item">
+              <div className="campana">
+                <span className={`puntito ${tonoPrioridad(a.prioridad)}`} />
+                <div className="bloque">
+                  <div>
+                    <strong>{etiquetaRegla(a.regla)}</strong>{" "}
+                    <span className={`chip chip-${tonoPrioridad(a.prioridad)}`}>
+                      {a.prioridad}
+                    </span>
+                  </div>
+                  <div className="meta">
+                    <Link href={`/envio/${a.shipment_id}`}>
+                      {a.shipment_id}
+                    </Link>
+                    {a.causa ? ` · ${a.causa}` : ""}
+                  </div>
+                </div>
+              </div>
+            </li>
+          ))}
+          {alertas.length === 0 && (
+            <li className="muted">Sin alertas abiertas.</li>
+          )}
+        </ul>
       </section>
 
       <section className="panel">
@@ -99,7 +162,9 @@ export default function TorreCliente({ kpis, porHora, envios, conteo, reloj }) {
               <tr key={e.shipment_id}>
                 <td className="codigo">{e.shipment_id}</td>
                 <td>
-                  <Chip color={tonoEstado(e.estado)}>{etiquetaEstado(e.estado)}</Chip>
+                  <Chip color={tonoEstado(e.estado)}>
+                    {etiquetaEstado(e.estado)}
+                  </Chip>
                 </td>
                 <td>
                   <div>{e.zona_id || "—"}</div>
@@ -158,11 +223,7 @@ function Barra({ hora, en_tiempo, tarde, pendientes }) {
 
 function Col({ w, c, t }) {
   return (
-    <div
-      className={`col col-${c}`}
-      style={{ flex: `${w} 1 0%` }}
-      title={t}
-    >
+    <div className={`col col-${c}`} style={{ flex: `${w} 1 0%` }} title={t}>
       {w > 10 ? t : ""}
     </div>
   );

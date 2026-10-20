@@ -15,6 +15,17 @@ const connectionString =
 export const pool = globalThis.__rutasurPool ?? new Pool({ connectionString, max: 5 });
 globalThis.__rutasurPool = pool;
 
+// Igual que en los servicios: si Postgres se cae o reinicia, las conexiones
+// "idle" del pool mueren con un FATAL (p. ej. 57P01). Sin este handler, pg emite
+// 'error' en el pool y Node mata el proceso del servidor Next ("uncaughtException").
+// Con el handler, logueamos y el pool reconecta solo en la próxima consulta.
+pool.on('error', (error) => {
+  console.error(
+    `[db] conexión perdida con PostgreSQL (${error.code ?? 'sin código'}): ` +
+    `${error.message}. Se reconecta en la próxima consulta.`
+  );
+});
+
 // Atajo: consultar(sql, params) -> rows
 export async function consultar(texto, params = []) {
   const { rows } = await pool.query(texto, params);

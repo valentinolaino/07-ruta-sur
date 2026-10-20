@@ -1,9 +1,4 @@
 // Agenda de publicaciones: una cola ordenada por "cuándo hay que publicar".
-//
-// El simulador planifica de antemano todos los eventos de un envío (cada uno con su
-// instante simulado) y los deja acá. Un temporizador vacía la agenda: saca los
-// eventos que ya vencieron y los publica en Kafka.
-
 class Agenda {
   constructor() {
     this.items = []; // ordenados por realMs; a igual hora, por orden de llegada
@@ -19,7 +14,8 @@ class Agenda {
     while (bajo < alto) {
       const medio = (bajo + alto) >> 1;
       const m = this.items[medio];
-      if (m.realMs < realMs || (m.realMs === realMs && m.orden < item.orden)) bajo = medio + 1;
+      if (m.realMs < realMs || (m.realMs === realMs && m.orden < item.orden))
+        bajo = medio + 1;
       else alto = medio;
     }
     this.items.splice(bajo, 0, item);

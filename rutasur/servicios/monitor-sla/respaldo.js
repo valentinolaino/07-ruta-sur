@@ -1,15 +1,4 @@
-// Respaldo en PostgreSQL del estado interno del monitor de SLA (CU3).
-//
-// El estado principal vive en memoria (un Map en index.js); esta tabla es el
-// respaldo que permite REANUDAR tras un reinicio sin perder ni repetir alertas:
-//   - "reglas_alertadas" sobrevive al proceso  -> la misma regla no alerta dos veces;
-//   - "ultimo_ocurrido_en" permite reconstruir el reloj simulado al arrancar;
-//   - el offset de Kafka se confirma después de escribir acá, así que un corte a
-//     mitad reintenta el evento desde un estado consistente.
-//
-// En el PDF esto es "estado en memoria con respaldo en MongoDB".
-
-const { pool } = require('../../shared/db');
+const { pool } = require("../../shared/db");
 
 function filaAFila(fila) {
   return {
@@ -25,11 +14,11 @@ function filaAFila(fila) {
   };
 }
 
-// Lee el estado de un envío (o null si es la primera vez que lo vemos).
-// FOR UPDATE: dentro de una transacción bloquea la fila, así el tick y el consumo
-// de eventos no pueden pisarse dos decisiones sobre el mismo envío.
 async function leer(client, shipmentId) {
-  const { rows } = await client.query('SELECT * FROM monitor_sla WHERE shipment_id = $1 FOR UPDATE', [shipmentId]);
+  const { rows } = await client.query(
+    "SELECT * FROM monitor_sla WHERE shipment_id = $1 FOR UPDATE",
+    [shipmentId],
+  );
   return rows.length ? filaAFila(rows[0]) : null;
 }
 
@@ -60,7 +49,7 @@ async function guardar(client, est) {
       JSON.stringify(est.reglasAlertadas),
       est.terminado,
       est.ultimoOcurridoMs,
-    ]
+    ],
   );
 }
 
@@ -73,21 +62,25 @@ async function agregarRegla(client, shipmentId, regla) {
             actualizado_en = now()
       WHERE shipment_id = $1
         AND NOT reglas_alertadas @> $2::jsonb`,
-    [shipmentId, JSON.stringify([regla])]
+    [shipmentId, JSON.stringify([regla])],
   );
   return r.rowCount === 1;
 }
 
 // Carga al arrancar todos los envíos ABERTOS (sin entregar).
 async function cargarAbiertos() {
-  const { rows } = await pool.query('SELECT * FROM monitor_sla WHERE terminado = false ORDER BY shipment_id');
+  const { rows } = await pool.query(
+    "SELECT * FROM monitor_sla WHERE terminado = false ORDER BY shipment_id",
+  );
   return rows.map(filaAFila);
 }
 
 // El mayor ocurridoEn visto = por dónde va el reloj simulado. Se usa al arrancar
 // para no arrancar "en cero" después de un reinicio.
 async function maxOcurrido() {
-  const { rows } = await pool.query('SELECT MAX(ultimo_ocurrido_en) AS max FROM monitor_sla');
+  const { rows } = await pool.query(
+    "SELECT MAX(ultimo_ocurrido_en) AS max FROM monitor_sla",
+  );
   return rows[0] && rows[0].max ? rows[0].max.getTime() : 0;
 }
 

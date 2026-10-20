@@ -1,68 +1,71 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { etiquetaEstado, tonoEstado } from "@/lib/estados";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { tonoEstado } from "@/lib/estados";
 import { fechaHora } from "@/lib/tiempo";
 
+// Tracking público: estado actual, fecha estimada y línea de tiempo, sin datos internos.
+// Se actualiza en vivo: escucha el SSE /api/en-vivo (que a su vez escucha NOTIFY de Postgres)
+// y vuelve a pedir el envío cuando hay un cambio. Nunca habla con Kafka.
 export default function TrackingCliente() {
   const [codigo, setCodigo] = useState("");
   const [envio, setEnvio] = useState(null);
-  const [historial, setHistorial] = useState([]);
   const [err, setErr] = useState("");
   const [buscando, setBuscando] = useState(false);
+  const codigoActivo = useRef(null); // código del envío que se está siguiendo
 
-  async function buscar() {
-    setBuscando(true);
-    setErr("");
+  const consultar = useCallback(async (c, { silencioso = false } = {}) => {
+    if (!silencioso) {
+      setBuscando(true);
+      setErr("");
+    }
     try {
-      const r = await fetch(
-        `/api/tracking?codigo=${encodeURIComponent(codigo)}`,
-        { cache: "no-store" }
-      );
+      const r = await fetch(`/api/tracking?codigo=${encodeURIComponent(c)}`, { cache: "no-store" });
       const d = await r.json();
       if (!d.envio) {
-        setErr(d.mensaje || "No se encontró un envío con ese código");
-        setEnvio(null);
-        setHistorial([]);
+        if (!silencioso) {
+          setEnvio(null);
+          setErr(d.mensaje || "No encontramos un envío con ese código");
+          codigoActivo.current = null;
+        }
       } else {
         setEnvio(d.envio);
-        setHistorial(d.historial || []);
+        codigoActivo.current = d.envio.codigo;
       }
     } catch (e) {
-      setErr(String(e));
+      if (!silencioso) setErr("No pudimos consultar el envío");
     } finally {
-      setBuscando(false);
+      if (!silencioso) setBuscando(false);
     }
-  }
+  }, []);
 
-  // Si alguien entra con /tracking/ENV-000001, buscamos ese código.
+  // Si alguien entra con /tracking/ENV-000001, se busca ese código.
   useEffect(() => {
     const actual = window.location.pathname.split("/")[2];
     if (actual) {
-      setCodigo(decodeURIComponent(actual).toUpperCase());
-      buscarCon(decodeURIComponent(actual));
+      const c = decodeURIComponent(actual).toUpperCase();
+      setCodigo(c);
+      consultar(c);
     }
-    async function buscarCon(c) {
-      const r = await fetch(`/api/tracking?codigo=${encodeURIComponent(c)}`, {
-        cache: "no-store",
-      });
-      const d = await r.json();
-      if (d.envio) {
-        setEnvio(d.envio);
-        setHistorial(d.historial || []);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [consultar]);
+
+  // En vivo: cada aviso del SSE vuelve a leer el envío que se está siguiendo.
+  useEffect(() => {
+    const es = new EventSource("/api/en-vivo");
+    es.addEventListener("cambio", () => {
+      if (codigoActivo.current) consultar(codigoActivo.current, { silencioso: true });
+    });
+    es.onerror = () => {};
+    return () => es.close();
+  }, [consultar]);
 
   return (
     <main className="wrap">
       <header className="cabecera">
         <div>
-          <h1>Tracking de envío</h1>
-          <p className="sub">Estado actual y línea de tiempo (vista derivada de los eventos)</p>
+          <h1>Seguí tu envío</h1>
+          <p className="sub">Ingresá tu código para ver dónde está tu paquete</p>
         </div>
-        <a href="/" className="btn">Volver a torre</a>
       </header>
 
       <section className="panel">
@@ -73,11 +76,11 @@ export default function TrackingCliente() {
               className="input"
               value={codigo}
               onChange={(e) => setCodigo(e.target.value.toUpperCase())}
-              onKeyDown={(e) => e.key === "Enter" && buscar()}
+              onKeyDown={(e) => e.key === "Enter" && consultar(codigo)}
               placeholder="Ej. ENV-000001"
             />
           </div>
-          <button className="btn" onClick={buscar} disabled={buscando}>
+          <button className="btn" onClick={() => consultar(codigo)} disabled={buscando}>
             {buscando ? "Buscando..." : "Buscar"}
           </button>
           {err && <div className="muted">{err}</div>}
@@ -87,47 +90,41 @@ export default function TrackingCliente() {
       {envio && (
         <>
           <section className="panel">
-            <h2 className="codigo">{envio.shipment_id}</h2>
+            <h2 className="codigo">{envio.codigo}</h2>
             <div className="kv">
               <div className="k">Estado</div>
               <div>
-                <span className={`chip chip-${tonoEstado(envio.estado)}`}>
-                  {etiquetaEstado(envio.estado)}
-                </span>
+                <span className={`chip chip-${tonoEstado(envio.estado)}`}>{envio.etiqueta}</span>
               </div>
-              <div className="k">Zona / Hub</div>
-              <div>
-                {envio.zona_id || "—"} / {envio.hub_id || "—"}
-              </div>
-              <div className="k">Repartidor</div>
-              <div>{envio.repartidor_id || "—"}</div>
-              <div className="k">Promesa</div>
-              <div>{fechaHora(envio.promesa_vence_en)}</div>
-              <div className="k">Intentos</div>
-              <div>
-                {envio.intentos} {envio.motivo_fallo ? `· ${envio.motivo_fallo}` : ""}
-              </div>
-              <div className="k">Actualizado</div>
-              <div>{fechaHora(envio.actualizado_en)}</div>
+              {envio.estimada && (
+                <>
+                  <div className="k">Fecha estimada</div>
+                  <div>
+                    {envio.estimada.franja
+                      ? `${new Date(envio.estimada.fecha + "T00:00:00").toLocaleDateString("es-AR")} · ${
+                          envio.estimada.franja === "MANANA" ? "mañana" : "tarde"
+                        }`
+                      : fechaHora(envio.estimada.fecha)}
+                  </div>
+                </>
+              )}
+              <div className="k">Última actualización</div>
+              <div>{fechaHora(envio.actualizadoEn)}</div>
             </div>
           </section>
 
           <section className="panel">
-            <h2>Línea de tiempo</h2>
+            <h2>Recorrido</h2>
             <ul className="lista">
-              {historial.map((h) => (
-                <li key={h.eventId} className="item">
+              {envio.linea.map((h, i) => (
+                <li key={`${h.ocurridoEn}-${i}`} className="item">
                   <div className="bloque">
-                    <div>
-                      <strong>{h.tipo}</strong> · {h.origen}
-                    </div>
-                    <div className="meta">
-                      {fechaHora(h.ocurridoEn)} · secuencia {h.secuencia}
-                    </div>
+                    <div><strong>{h.etiqueta}</strong></div>
+                    <div className="meta">{fechaHora(h.ocurridoEn)}</div>
                   </div>
                 </li>
               ))}
-              {historial.length === 0 && <li className="muted">Sin eventos.</li>}
+              {envio.linea.length === 0 && <li className="muted">Todavía no hay movimientos.</li>}
             </ul>
           </section>
         </>

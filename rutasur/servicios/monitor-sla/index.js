@@ -1,47 +1,32 @@
-// SERVICIO MONITOR DE SLA (CU3)
-//
-// Cruza el último estado de cada envío con su promesa de entrega y emite una
-// alerta en alertas.sla ANTES del vencimiento. A diferencia de los demás servicios,
-// su motor principal no es un evento sino el PASO DEL TIEMPO:
-//
-//   - consume envios.estados y envios.promesas (grupo propio "monitor-sla");
-//   - evalúa las 4 reglas al recibir cada evento y, además, en un tick periódico
-//     que recorre TODOS los envíos abiertos;
-//   - usa el reloj SIMULADO (el mayor campo ocurridoEn visto), no el de la máquina;
-//   - el estado vive en memoria y se respalda en la tabla monitor_sla, así que un
-//     reinicio no pierde ni repite alertas;
-//   - al llegar ENTREGADO publica el cierre de las alertas que tenía abiertas.
-//
-// Arranque:  npm run monitor
+const { consumir, crearProductor, publicar } = require("../../shared/kafka");
+const { conTransaccion, registrarEventoProcesado } = require("../../shared/db");
+const { TOPICS, GRUPOS, idDerivado } = require("../../shared/eventos");
+const { log, logError } = require("../../shared/logger");
+const {
+  evaluar,
+  pendientes,
+  aplicar,
+  alertaAbierta,
+  alertaCerrada,
+  PRIORIDAD_POR_REGLA,
+} = require("./evaluar");
+const respaldo = require("./respaldo");
 
-const { consumir, crearProductor, publicar } = require('../../shared/kafka');
-const { conTransaccion, registrarEventoProcesado } = require('../../shared/db');
-const { TOPICS, GRUPOS, idDerivado } = require('../../shared/eventos');
-const { log, logError } = require('../../shared/logger');
-const { evaluar, pendientes, aplicar, alertaAbierta, alertaCerrada, PRIORIDAD_POR_REGLA } = require('./evaluar');
-const respaldo = require('./respaldo');
+const SERVICIO = "monitor-sla";
 
-const SERVICIO = 'monitor-sla';
-
-// Cada cuánto (ms REALES) se evalúan todos los envíos abiertos. El PDF dice "cada
-// minuto" de tiempo SIMULADO: con el valor por defecto del simulador (1 h simulada
-// = 30 s reales) un minuto simulado = 500 ms reales. Si cambiás SIM_SEGUNDOS_POR_HORA,
-// ajustá MONITOR_TICK_MS en consecuencia.
 const TICK_MS = Number(process.env.MONITOR_TICK_MS) || 500;
 
 // Estado en memoria: shipmentId -> objeto del monitor (el respaldo está en respaldo.js)
 const abiertos = new Map();
 
-// Reloj simulado: el mayor ocurridoEn de todos los eventos vistos. Avanza solo con
-// los eventos; el tick lo congela si el simulador se detiene (que es lo correcto:
-// si no llegan eventos, el tiempo del mundo simulado tampoco corre).
 let ahoraSim = 0;
 
 // Se asigna en main(). El tick y el consumo de eventos publican con él.
 let productor = null;
 
 // El id del envío con la regla es la clave de "sin repetición" en todo el sistema.
-const idAlerta = (shipmentId, regla) => idDerivado('alerta', `${shipmentId}:${regla}`);
+const idAlerta = (shipmentId, regla) =>
+  idDerivado("alerta", `${shipmentId}:${regla}`);
 
 // ---------------------------------------------------------------------------
 // Consumo de eventos
@@ -49,16 +34,27 @@ const idAlerta = (shipmentId, regla) => idDerivado('alerta', `${shipmentId}:${re
 async function manejar(evento, ubicacion) {
   const estFinal = await conTransaccion(async (client) => {
     // Idempotencia: ¿ya apliqué este eventId? Entonces es un duplicado.
-    const esNuevo = await registrarEventoProcesado(client, GRUPOS.MONITOR_SLA, evento.eventId);
+    const esNuevo = await registrarEventoProcesado(
+      client,
+      GRUPOS.MONITOR_SLA,
+      evento.eventId,
+    );
     if (!esNuevo) {
-      log(SERVICIO, 'evento duplicado descartado', { eventId: evento.eventId, ...ubicacion });
+      log(SERVICIO, "evento duplicado descartado", {
+        eventId: evento.eventId,
+        ...ubicacion,
+      });
       return null;
     }
 
     // El respaldo (no la memoria) es la verdad dentro de la transacción: así el tick
     // y el consumo de eventos no pueden abrir dos veces la misma regla.
     const previo = await respaldo.leer(client, evento.shipmentId);
-    const { estado: nuevo, cambiado, motivo } = aplicar(previo, evento, ubicacion.topic);
+    const {
+      estado: nuevo,
+      cambiado,
+      motivo,
+    } = aplicar(previo, evento, ubicacion.topic);
 
     if (!cambiado) {
       log(SERVICIO, `evento descartado: ${motivo}`, {
@@ -73,11 +69,17 @@ async function manejar(evento, ubicacion) {
     const ahoraLocal = Math.max(ahoraSim, nuevo.ultimoOcurridoMs);
 
     // "Evaluación al recibir cada evento": reglas que aplican con el estado nuevo.
-    const reglas = pendientes(evaluar({ ...nuevo, ahoraMs: ahoraLocal }), nuevo.reglasAlertadas);
+    const reglas = pendientes(
+      evaluar({ ...nuevo, ahoraMs: ahoraLocal }),
+      nuevo.reglasAlertadas,
+    );
     // El cierre solo corresponde si tenía alertas abiertas y recién ahora se entrega.
     const cerrar = nuevo.terminado && nuevo.reglasAlertadas.length > 0;
 
-    const conAlertas = { ...nuevo, reglasAlertadas: [...nuevo.reglasAlertadas, ...reglas] };
+    const conAlertas = {
+      ...nuevo,
+      reglasAlertadas: [...nuevo.reglasAlertadas, ...reglas],
+    };
     await respaldo.guardar(client, conAlertas);
 
     for (const regla of reglas) {
@@ -89,14 +91,18 @@ async function manejar(evento, ubicacion) {
           estado: conAlertas,
           ahoraMs: ahoraLocal,
           eventId: idAlerta(conAlertas.shipmentId, regla),
-        })
+        }),
       );
-      log(SERVICIO, `alerta ABIERTA: ${regla} (prioridad ${PRIORIDAD_POR_REGLA[regla]})`, {
-        shipmentId: conAlertas.shipmentId,
-        estado: conAlertas.estado,
-        eventId: evento.eventId,
-        ...ubicacion,
-      });
+      log(
+        SERVICIO,
+        `alerta ABIERTA: ${regla} (prioridad ${PRIORIDAD_POR_REGLA[regla]})`,
+        {
+          shipmentId: conAlertas.shipmentId,
+          estado: conAlertas.estado,
+          eventId: evento.eventId,
+          ...ubicacion,
+        },
+      );
     }
 
     if (cerrar) {
@@ -106,10 +112,10 @@ async function manejar(evento, ubicacion) {
         alertaCerrada({
           estado: conAlertas,
           ocurridoEn: evento.ocurridoEn,
-          eventId: idDerivado('alerta-cierre', conAlertas.shipmentId),
-        })
+          eventId: idDerivado("alerta-cierre", conAlertas.shipmentId),
+        }),
       );
-      log(SERVICIO, 'alertas CERRADAS (envío entregado)', {
+      log(SERVICIO, "alertas CERRADAS (envío entregado)", {
         shipmentId: conAlertas.shipmentId,
         cerradas: conAlertas.reglasAlertadas,
         ...ubicacion,
@@ -134,7 +140,10 @@ async function evaluarTodos() {
   if (ahoraSim === 0) return; // todavía no vimos eventos: no hay "ahora" simulado
 
   for (const [shipmentId, est] of abiertos) {
-    const candidatas = pendientes(evaluar({ ...est, ahoraMs: ahoraSim }), est.reglasAlertadas);
+    const candidatas = pendientes(
+      evaluar({ ...est, ahoraMs: ahoraSim }),
+      est.reglasAlertadas,
+    );
 
     for (const regla of candidatas) {
       try {
@@ -143,7 +152,12 @@ async function evaluarTodos() {
           if (!actual || actual.terminado) return null; // entregó mientras tanto
 
           const ahoraLocal = Math.max(ahoraSim, actual.ultimoOcurridoMs);
-          if (!pendientes(evaluar({ ...actual, ahoraMs: ahoraLocal }), actual.reglasAlertadas).includes(regla)) {
+          if (
+            !pendientes(
+              evaluar({ ...actual, ahoraMs: ahoraLocal }),
+              actual.reglasAlertadas,
+            ).includes(regla)
+          ) {
             return null; // otra vía ya la evaluó y descartó (o ya abrió la misma regla)
           }
           // Guardia atómica: si la fila ya tiene la regla, otra corrida la ganó.
@@ -152,26 +166,42 @@ async function evaluarTodos() {
 
           const alerta = alertaAbierta({
             regla,
-            estado: { ...actual, reglasAlertadas: [...actual.reglasAlertadas, regla] },
+            estado: {
+              ...actual,
+              reglasAlertadas: [...actual.reglasAlertadas, regla],
+            },
             ahoraMs: ahoraLocal,
             eventId: idAlerta(shipmentId, regla),
           });
           await publicar(productor, TOPICS.ALERTAS_SLA, alerta);
-          return { est: { ...actual, reglasAlertadas: [...actual.reglasAlertadas, regla] }, alerta };
+          return {
+            est: {
+              ...actual,
+              reglasAlertadas: [...actual.reglasAlertadas, regla],
+            },
+            alerta,
+          };
         });
 
         if (abierto) {
           const enMemoria = abiertos.get(shipmentId);
-          if (enMemoria) enMemoria.reglasAlertadas = abierto.est.reglasAlertadas;
-          log(SERVICIO, `alerta ABIERTA por tick: ${regla} (prioridad ${abierto.alerta.prioridad})`, {
-            shipmentId,
-            causa: abierto.alerta.causa,
-            relojSimulado: new Date(ahoraSim).toISOString(),
-          });
+          if (enMemoria)
+            enMemoria.reglasAlertadas = abierto.est.reglasAlertadas;
+          log(
+            SERVICIO,
+            `alerta ABIERTA por tick: ${regla} (prioridad ${abierto.alerta.prioridad})`,
+            {
+              shipmentId,
+              causa: abierto.alerta.causa,
+              relojSimulado: new Date(ahoraSim).toISOString(),
+            },
+          );
         }
       } catch (error) {
         // Una alerta que falla no frena el resto del tick: se reintentará en la próxima vuelta.
-        logError(SERVICIO, `no se pudo abrir la alerta ${regla}`, error, { shipmentId });
+        logError(SERVICIO, `no se pudo abrir la alerta ${regla}`, error, {
+          shipmentId,
+        });
       }
     }
   }
@@ -183,34 +213,36 @@ async function evaluarTodos() {
 async function main() {
   productor = await crearProductor(`${SERVICIO}-productor`);
 
-  // 1) Reanudar desde el respaldo ANTES de suscribir: si el proceso se cayó,
-  //    recupera los envíos abiertos, las reglas ya alertadas y el reloj simulado.
-  for (const est of await respaldo.cargarAbiertos()) abiertos.set(est.shipmentId, est);
+  for (const est of await respaldo.cargarAbiertos())
+    abiertos.set(est.shipmentId, est);
   ahoraSim = await respaldo.maxOcurrido();
 
-  // 2) Suscribir. envios.promesas se releé SIEMPRE desde el inicio: es compactado
-  //    (un mensaje por envío) y así el monitor conoce la promesa de envíos abiertos
-  //    anteriores a su arranque. envios.estados no, para no reabrir alertas viejas;
-  //    MONITOR_DESDE_INICIO=1 lo fuerza (reconstrucción completa del estado).
   await consumir({
     servicio: SERVICIO,
     groupId: GRUPOS.MONITOR_SLA,
     topics: [
-      { nombre: TOPICS.ESTADOS, desdeInicio: process.env.MONITOR_DESDE_INICIO === '1' },
+      {
+        nombre: TOPICS.ESTADOS,
+        desdeInicio: process.env.MONITOR_DESDE_INICIO === "1",
+      },
       { nombre: TOPICS.PROMESAS, desdeInicio: true },
     ],
     manejar,
   });
-  log(SERVICIO, 'escuchando eventos', {
+  log(SERVICIO, "escuchando eventos", {
     grupo: GRUPOS.MONITOR_SLA,
     enviosAbiertos: abiertos.size,
-    relojSimulado: ahoraSim ? new Date(ahoraSim).toISOString() : 'sin eventos todavía',
+    relojSimulado: ahoraSim
+      ? new Date(ahoraSim).toISOString()
+      : "sin eventos todavía",
     tickMs: TICK_MS,
   });
 
   // 3) El tick del "paso del tiempo".
   setInterval(() => {
-    evaluarTodos().catch((error) => logError(SERVICIO, 'error en el tick de evaluación', error));
+    evaluarTodos().catch((error) =>
+      logError(SERVICIO, "error en el tick de evaluación", error),
+    );
   }, TICK_MS);
 }
 

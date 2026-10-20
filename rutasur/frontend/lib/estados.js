@@ -24,6 +24,9 @@ export function tonoEstado(estado) {
 // Pasos del embudo del CU1: cada paso cuenta envíos que llegaron a ese hito.
 export const EMBUDO = ["CREADO", "INGRESADO_HUB", "CLASIFICADO", "EN_REPARTO", "ENTREGADO"];
 
+// Estados fuera del circuito feliz (contadores adicionales de la torre).
+export const ESTADOS_FALLA = ["ENTREGA_FALLIDA", "REPROGRAMADO", "RETENIDO", "DEVOLUCION"];
+
 // Las reglas de SLA (shared/eventos.js: REGLAS_SLA + PRIORIDAD_POR_REGLA).
 export const REGLAS_SLA = {
   SIN_INGRESO: { etq: "Sin ingreso al hub", prioridad: "MEDIA" },

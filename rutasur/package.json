@@ -7,6 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "start": "node scripts/arrancar.js",
     "verificar": "node shared/verificar.js",
     "simulador": "node simulador/simulador.js",
     "escenario": "node simulador/escenario.js",
@@ -18,7 +19,9 @@
     "analitica:tiempos": "node servicios/analitica/tiempos.js",
     "todo": "node scripts/todos.js",
     "reconstruir": "node scripts/reconstruir.js",
-    "test": "node --test shared/eventos.test.js simulador/plan.test.js servicios/proyector/reducer.test.js servicios/servicios.test.js servicios/monitor-sla/evaluar.test.js servicios/analitica/indicadores.test.js"
+    "test": "node --test shared/eventos.test.js simulador/plan.test.js servicios/proyector/reducer.test.js servicios/servicios.test.js servicios/monitor-sla/evaluar.test.js servicios/analitica/indicadores.test.js",
+    "lag": "node scripts/lag.js",
+    "reconstruir:envios": "node scripts/reconstruir.js --solo-proyector"
   },
   "dependencies": {
     "ajv": "^8.17.1",

@@ -8,6 +8,7 @@ import {
   listarEnvios,
   conteoPorEstado,
   ultimaActividad,
+  colaAlertas,
 } from "@/lib/consultas";
 import { fijarRelojSimulado } from "@/lib/tiempo";
 import TorreCliente from "./components/TorreCliente";
@@ -15,12 +16,13 @@ import TorreCliente from "./components/TorreCliente";
 export const dynamic = "force-dynamic";
 
 export default async function Torre() {
-  const [kpis, porHora, envios, conteo, ultima] = await Promise.all([
+  const [kpis, porHora, envios, conteo, ultima, alertas] = await Promise.all([
     kpisTorre(),
     proyeccionPorHora(),
     listarEnvios({ limite: 40 }),
     conteoPorEstado(),
     ultimaActividad(),
+    colaAlertas({ limite: 15 }),
   ]);
 
   if (ultima) fijarRelojSimulado(ultima);
@@ -32,6 +34,7 @@ export default async function Torre() {
       envios={envios}
       conteo={conteo}
       reloj={ultima}
+      alertas={alertas}
     />
   );
 }
